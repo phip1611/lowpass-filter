@@ -1,4 +1,3 @@
-/*
 MIT License
 
 Copyright (c) 2021 Philipp Schuster
@@ -20,24 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-*/
-//! This is a `no_std` Rust library for simple digital low pass filters. You can use it for
-//! example to get the low frequencies from a song.
-
-#![no_std]
-
-// use alloc crate, because this is no_std
-extern crate alloc;
-
-
-// use std in tests
-#[cfg(test)]
-#[macro_use]
-extern crate std;
-
-pub mod simple;
-mod test;
-
-#[cfg(test)]
-mod tests {
-}
