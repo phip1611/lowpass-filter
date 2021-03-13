@@ -49,7 +49,7 @@ mod tests {
     fn test_visualize_lowpassed_data() {
         let mut path = PathBuf::new();
         path.push(TEST_SAMPLES_DIR);
-        path.push("C:\\Users\\phip1611\\Music\\Linkin Park\\Hybrid Theory\\08-In the End.mp3");
+        path.push("sample_1");
         let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
 
         let mut lrlr_mp3_samples = vec![];
