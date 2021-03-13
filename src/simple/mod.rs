@@ -27,22 +27,22 @@ SOFTWARE.
 //! It applies a low pass filter on a vector of samples. It mutates the input array.
 //! Therefore, the number of output values equals the number of input values.
 
-/// Single precision / f32 / float.
-pub mod sp;
 /// Double precision / f64 / double.
 pub mod dp;
+/// Single precision / f32 / float.
+pub mod sp;
 
 #[cfg(test)]
 mod tests {
-    use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
-    use std::path::PathBuf;
-    use std::fs::File;
-    use audio_visualizer::{Channels, ChannelInterleavement};
-    use audio_visualizer::waveform::staticc::png_file::visualize;
-    use std::time::Instant;
-    use crate::simple::sp::apply_lpf_i16_sp;
     use crate::simple::dp::apply_lpf_i16_dp;
+    use crate::simple::sp::apply_lpf_i16_sp;
     use crate::test_util::{TEST_OUT_DIR, TEST_SAMPLES_DIR};
+    use audio_visualizer::waveform::staticc::png_file::visualize;
+    use audio_visualizer::{ChannelInterleavement, Channels};
+    use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
+    use std::fs::File;
+    use std::path::PathBuf;
+    use std::time::Instant;
 
     /// To see if the test actually works, check the waveform in the image output.
     #[test]
@@ -55,7 +55,10 @@ mod tests {
         let mut lrlr_mp3_samples = vec![];
         loop {
             match decoder.next_frame() {
-                Ok(Mp3Frame { data: samples_of_frame, .. }) => {
+                Ok(Mp3Frame {
+                    data: samples_of_frame,
+                    ..
+                }) => {
                     for sample in samples_of_frame {
                         lrlr_mp3_samples.push(sample);
                     }
@@ -70,7 +73,7 @@ mod tests {
             &lrlr_mp3_samples,
             Channels::Stereo(ChannelInterleavement::LRLR),
             TEST_OUT_DIR,
-            "sample_1_waveform.png"
+            "sample_1_waveform_original_before_lpf.png",
         );
 
         // split into left and right channel
@@ -84,7 +87,11 @@ mod tests {
             apply_lpf_i16_sp(&mut left, 44100, 120);
         }
         let then = now.elapsed();
-        println!("took {}us to apply low pass filter for left channel ({}) samples", then.as_micros(), left.len());
+        println!(
+            "took {}us to apply low pass filter for left channel ({}) samples",
+            then.as_micros(),
+            left.len()
+        );
         // right
         apply_lpf_i16_sp(&mut right, 44100, 120);
 
@@ -93,13 +100,13 @@ mod tests {
             &left,
             Channels::Mono,
             TEST_OUT_DIR,
-            "sample_1_waveform_lowpassed_left.png"
+            "sample_1_waveform_lowpassed_3times_left.png",
         );
         visualize(
             &right,
             Channels::Mono,
             TEST_OUT_DIR,
-            "sample_1_waveform_lowpassed_right.png"
+            "sample_1_waveform_lowpassed_right.png",
         );
     }
 
@@ -114,7 +121,10 @@ mod tests {
         let mut lrlr_mp3_samples = vec![];
         loop {
             match decoder.next_frame() {
-                Ok(Mp3Frame { data: samples_of_frame, .. }) => {
+                Ok(Mp3Frame {
+                    data: samples_of_frame,
+                    ..
+                }) => {
                     for sample in samples_of_frame {
                         lrlr_mp3_samples.push(sample);
                     }

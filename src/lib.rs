@@ -29,7 +29,6 @@ SOFTWARE.
 // use alloc crate, because this is no_std
 extern crate alloc;
 
-
 // use std in tests
 #[cfg(test)]
 #[macro_use]

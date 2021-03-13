@@ -24,13 +24,13 @@ SOFTWARE.
 #[macro_use]
 extern crate std;
 
-use std::path::PathBuf;
-use std::fs::File;
 use audio_visualizer::waveform::staticc::png_file::visualize;
-use audio_visualizer::{Channels, ChannelInterleavement};
-use std::time::Instant;
+use audio_visualizer::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
-use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
+use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
+use std::fs::File;
+use std::path::PathBuf;
+use std::time::Instant;
 
 fn main() {
     let mut path = PathBuf::new();
@@ -41,7 +41,10 @@ fn main() {
     let mut lrlr_mp3_samples = vec![];
     loop {
         match decoder.next_frame() {
-            Ok(Mp3Frame { data: samples_of_frame, .. }) => {
+            Ok(Mp3Frame {
+                data: samples_of_frame,
+                ..
+            }) => {
                 for sample in samples_of_frame {
                     lrlr_mp3_samples.push(sample);
                 }
@@ -56,7 +59,7 @@ fn main() {
         &lrlr_mp3_samples,
         Channels::Stereo(ChannelInterleavement::LRLR),
         "test/out",
-        "sample_1_waveform.png"
+        "sample_1_waveform.png",
     );
 
     // split into left and right channel
@@ -68,7 +71,11 @@ fn main() {
     // left
     apply_lpf_i16_sp(&mut left, 44100, 120);
     let then = now.elapsed();
-    println!("took {}us to apply low pass filter for left channel ({}) samples", then.as_micros(), left.len());
+    println!(
+        "took {}us to apply low pass filter for left channel ({}) samples",
+        then.as_micros(),
+        left.len()
+    );
     // right
     apply_lpf_i16_sp(&mut right, 44100, 120);
 
@@ -77,12 +84,12 @@ fn main() {
         &left,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_left.png"
+        "sample_1_waveform_lowpassed_left.png",
     );
     visualize(
         &right,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_right.png"
+        "sample_1_waveform_lowpassed_right.png",
     );
 }

@@ -26,12 +26,12 @@ SOFTWARE.
 #[macro_use]
 extern crate std;
 
-use std::path::PathBuf;
-use std::fs::File;
 use audio_visualizer::waveform::staticc::png_file::visualize;
-use audio_visualizer::{Channels, ChannelInterleavement};
+use audio_visualizer::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
-use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
+use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
+use std::fs::File;
+use std::path::PathBuf;
 
 /// This example reads a MP3, applies a digital low pass filter and visualizes
 /// the waveform in the end.
@@ -44,7 +44,10 @@ fn main() {
     let mut lrlr_mp3_samples = vec![];
     loop {
         match decoder.next_frame() {
-            Ok(Mp3Frame { data: samples_of_frame, .. }) => {
+            Ok(Mp3Frame {
+                data: samples_of_frame,
+                ..
+            }) => {
                 for sample in samples_of_frame {
                     lrlr_mp3_samples.push(sample);
                 }
@@ -58,7 +61,6 @@ fn main() {
         .stereo_interleavement()
         .to_channel_data(&lrlr_mp3_samples);
 
-
     // left
     apply_lpf_i16_sp(&mut left, 44100, 120);
     // right
@@ -69,12 +71,12 @@ fn main() {
         &left,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_left.png"
+        "sample_1_waveform_lowpassed_left.png",
     );
     visualize(
         &right,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_right.png"
+        "sample_1_waveform_lowpassed_right.png",
     );
 }
