@@ -2,7 +2,3 @@ language: rust
 rust:
   - stable
 cache: cargo
-
-# tests use this directory to create files
-before_install:
-  - mkdir test
