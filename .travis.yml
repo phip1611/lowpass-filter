@@ -2,3 +2,6 @@ language: rust
 rust:
   - stable
 cache: cargo
+
+before_install:
+  - mkdir $TRAVIS_HOME/test

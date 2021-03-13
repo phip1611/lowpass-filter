@@ -50,6 +50,7 @@ mod tests {
         let mut path = PathBuf::new();
         path.push(TEST_SAMPLES_DIR);
         path.push("sample_1");
+        println!("ENV pwd: {:#?}", std::env::current_dir().unwrap());
         let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
 
         let mut lrlr_mp3_samples = vec![];
