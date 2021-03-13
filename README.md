@@ -10,10 +10,11 @@ use std::path::PathBuf;
 use std::fs::File;
 use audio_visualizer::waveform::staticc::png_file::visualize;
 use audio_visualizer::{Channels, ChannelInterleavement};
-use std::time::Instant;
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
 
+/// This example reads a MP3, applies a digital low pass filter and visualizes
+/// the waveform in the end.
 fn main() {
     let mut path = PathBuf::new();
     path.push("test/samples");
@@ -60,17 +61,13 @@ fn main() {
 ```
 
 ## Visual Examples
-### #1: Original Waveform
+### #1: Original Waveform of a short sample
 ![Example 1: Original Waveform of a short sample](sample1_waveform.png "Example 1: Original Waveform of a short sample")
 ### #1: Lowpassed Waveform
 ![Example 1: Lowpassed Waveform of a short sample](sample1_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a short sample")
-### #2: Original Waveform
+### #2: Original Waveform of a song
 ![Example 1: Original Waveform of a song](song_waveform.png "Example 1: Original Waveform of a song")
 ### #2: Lowpassed Waveform
 ![Example 1: Lowpassed Waveform of a song](song_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a song")
 ### #2: 3x Lowpassed Waveform
 ![Example 1: Lowpassed Waveform of a song 3x](song_waveform_lowpassed_3x.png "Example 1: Lowpassed Original Waveform of a song 3 times")
-
-
-
-

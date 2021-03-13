@@ -21,6 +21,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+//! This example reads a MP3, applies a digital low pass filter and visualizes
+//! the waveform in the end.
 #[macro_use]
 extern crate std;
 
@@ -28,10 +30,11 @@ use std::path::PathBuf;
 use std::fs::File;
 use audio_visualizer::waveform::staticc::png_file::visualize;
 use audio_visualizer::{Channels, ChannelInterleavement};
-use std::time::Instant;
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
 
+/// This example reads a MP3, applies a digital low pass filter and visualizes
+/// the waveform in the end.
 fn main() {
     let mut path = PathBuf::new();
     path.push("test/samples");
