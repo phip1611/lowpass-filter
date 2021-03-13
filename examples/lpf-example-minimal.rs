@@ -29,12 +29,12 @@ use std::fs::File;
 use audio_visualizer::waveform::staticc::png_file::visualize;
 use audio_visualizer::{Channels, ChannelInterleavement};
 use std::time::Instant;
-use lowpass_filter::simple::apply_lpf_i16;
+use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
 
 fn main() {
     let mut path = PathBuf::new();
-    path.push("src/test/samples");
+    path.push("test/samples");
     path.push("sample_1.mp3");
     let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
 
@@ -57,21 +57,21 @@ fn main() {
 
 
     // left
-    apply_lpf_i16(&mut left, 44100, 120);
+    apply_lpf_i16_sp(&mut left, 44100, 120);
     // right
-    apply_lpf_i16(&mut right, 44100, 120);
+    apply_lpf_i16_sp(&mut right, 44100, 120);
 
     // visualize audio as waveform in a PNG file
     visualize(
         &left,
         Channels::Mono,
-        "src/test/out",
+        "test/out",
         "sample_1_waveform_lowpassed_left.png"
     );
     visualize(
         &right,
         Channels::Mono,
-        "src/test/out",
+        "test/out",
         "sample_1_waveform_lowpassed_right.png"
     );
 }

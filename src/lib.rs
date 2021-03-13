@@ -36,7 +36,9 @@ extern crate alloc;
 extern crate std;
 
 pub mod simple;
-mod test;
+
+#[cfg(test)]
+mod test_util;
 
 #[cfg(test)]
 mod tests {

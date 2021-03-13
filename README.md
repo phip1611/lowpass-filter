@@ -11,12 +11,12 @@ use std::fs::File;
 use audio_visualizer::waveform::staticc::png_file::visualize;
 use audio_visualizer::{Channels, ChannelInterleavement};
 use std::time::Instant;
-use lowpass_filter::simple::apply_lpf_i16;
+use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
 
 fn main() {
     let mut path = PathBuf::new();
-    path.push("src/test/samples");
+    path.push("test/samples");
     path.push("sample_1.mp3");
     let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
 
@@ -38,22 +38,22 @@ fn main() {
         .to_channel_data(&lrlr_mp3_samples);
 
 
-    // left
-    apply_lpf_i16(&mut left, 44100, 120);
-    // right
-    apply_lpf_i16(&mut right, 44100, 120);
+    // left: low pass filter with i16 samples in single precision
+    apply_lpf_i16_sp(&mut left, 44100, 120);
+    // right: lpf with i16 samples in single precision
+    apply_lpf_i16_sp(&mut right, 44100, 120);
 
     // visualize audio as waveform in a PNG file
     visualize(
         &left,
         Channels::Mono,
-        "src/test/out",
+        "test/out",
         "sample_1_waveform_lowpassed_left.png"
     );
     visualize(
         &right,
         Channels::Mono,
-        "src/test/out",
+        "test/out",
         "sample_1_waveform_lowpassed_right.png"
     );
 }
@@ -68,6 +68,8 @@ fn main() {
 ![Example 1: Original Waveform of a song](song_waveform.png "Example 1: Original Waveform of a song")
 ### #2: Lowpassed Waveform
 ![Example 1: Lowpassed Waveform of a song](song_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a song")
+### #2: 3x Lowpassed Waveform
+![Example 1: Lowpassed Waveform of a song 3x](song_waveform_lowpassed_3x.png "Example 1: Lowpassed Original Waveform of a song 3 times")
 
 
 

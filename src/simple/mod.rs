@@ -27,69 +27,29 @@ SOFTWARE.
 //! It applies a low pass filter on a vector of samples. It mutates the input array.
 //! Therefore, the number of output values equals the number of input values.
 
-use alloc::vec::Vec;
-
-/// Applies a low pass filter on a vector of **mono sample** in 16 bit resolution. If you
-/// have stereo data, call this function for each channel, convert it first to mono or do
-/// whatever fits your use case.
-/// * `data` audio samples
-/// * `sample_rate_hz` Sample Rate, e.g. 44100Hz
-/// * `cutoff_frequency_hz` upper bound for frequencies to be cutted, e.g. 150Hz
-pub fn apply_lpf_i16(data: &mut [i16], sample_rate_hz: u16, cutoff_frequency_hz: u16) {
-    // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-    let rc = 1_f64 / (cutoff_frequency_hz as f64 * 2_f64 * core::f64::consts::PI);
-    let dt = 1_f64 / sample_rate_hz as f64;
-    let alpha = dt / (rc + dt);
-
-    let mut cpy_orig_data = Vec::with_capacity(data.len());
-    cpy_orig_data.extend_from_slice(data);
-
-    data[0] = (alpha * cpy_orig_data[0] as f64) as i16;
-    for i in 1..data.len() {
-        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-        data[i] = (data[i - 1] as f64
-            + alpha *
-            (cpy_orig_data[i] as f64 - data[i-1] as f64)) as i16;
-    }
-}
-
-/// Same as [`apply_lpf_i16`] but with i32 audio resolution.
-pub fn apply_lpf_i32(data: &mut [i32], sample_rate_hz: u16, cutoff_frequency_hz: u16) {
-    // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-    let rc = 1_f64 / (cutoff_frequency_hz as f64 * 2_f64 * core::f64::consts::PI);
-    let dt = 1_f64 / sample_rate_hz as f64;
-    let alpha = dt / (rc + dt);
-
-    let mut cpy_orig_data = Vec::with_capacity(data.len());
-    cpy_orig_data.extend_from_slice(data);
-
-    data[0] = (alpha * cpy_orig_data[0] as f64) as i32;
-    for i in 1..data.len() {
-        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-        data[i] = (data[i - 1] as f64
-            + alpha *
-            (cpy_orig_data[i] as f64 - data[i-1] as f64)) as i32;
-    }
-}
-
+/// Single precision / f32 / float.
+pub mod sp;
+/// Double precision / f64 / double.
+pub mod dp;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
-    use crate::test::{TEST_SAMPLES_DIR, TEST_OUT_DIR};
     use std::path::PathBuf;
     use std::fs::File;
     use audio_visualizer::{Channels, ChannelInterleavement};
     use audio_visualizer::waveform::staticc::png_file::visualize;
     use std::time::Instant;
+    use crate::simple::sp::apply_lpf_i16_sp;
+    use crate::simple::dp::apply_lpf_i16_dp;
+    use crate::test_util::{TEST_OUT_DIR, TEST_SAMPLES_DIR};
 
     /// To see if the test actually works, check the waveform in the image output.
     #[test]
     fn test_visualize_lowpassed_data() {
         let mut path = PathBuf::new();
         path.push(TEST_SAMPLES_DIR);
-        path.push("sample_1.mp3");
+        path.push("C:\\Users\\phip1611\\Music\\Linkin Park\\Hybrid Theory\\08-In the End.mp3");
         let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
 
         let mut lrlr_mp3_samples = vec![];
@@ -120,11 +80,13 @@ mod tests {
 
         let now = Instant::now();
         // left
-        apply_lpf_i16(&mut left, 44100, 120);
+        for _ in 0..3 {
+            apply_lpf_i16_sp(&mut left, 44100, 120);
+        }
         let then = now.elapsed();
         println!("took {}us to apply low pass filter for left channel ({}) samples", then.as_micros(), left.len());
         // right
-        apply_lpf_i16(&mut right, 44100, 120);
+        apply_lpf_i16_sp(&mut right, 44100, 120);
 
         // visualize audio as waveform in a PNG file
         visualize(
@@ -139,5 +101,47 @@ mod tests {
             TEST_OUT_DIR,
             "sample_1_waveform_lowpassed_right.png"
         );
+    }
+
+    /// To see if the test actually works, check the waveform in the image output.
+    #[test]
+    fn test_compare_sp_dp_lpf() {
+        let mut path = PathBuf::new();
+        path.push(TEST_SAMPLES_DIR);
+        path.push("sample_1.mp3");
+        let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
+
+        let mut lrlr_mp3_samples = vec![];
+        loop {
+            match decoder.next_frame() {
+                Ok(Mp3Frame { data: samples_of_frame, .. }) => {
+                    for sample in samples_of_frame {
+                        lrlr_mp3_samples.push(sample);
+                    }
+                }
+                Err(Mp3Error::Eof) => break,
+                Err(e) => panic!("{:?}", e),
+            }
+        }
+
+        // split into left and right channel
+        let (mut left, mut right) = Channels::Stereo(ChannelInterleavement::LRLR)
+            .stereo_interleavement()
+            .to_channel_data(&lrlr_mp3_samples);
+
+        let sp_now = Instant::now();
+        apply_lpf_i16_sp(&mut left, 44100, 120);
+
+        let sp_duration = sp_now.elapsed().as_micros();
+        let dp_now = Instant::now();
+
+        apply_lpf_i16_dp(&mut right, 44100, 120);
+        let dp_duration = dp_now.elapsed().as_micros();
+
+        println!("sp lpf took: {}µs", sp_duration);
+        println!("dp lpf took: {}µs", dp_duration);
+
+        // on x86_64/i7-10600K I experienced that both are equally fast IN DEBUG MODE
+        // in Release mode SP is of course a few percent faster
     }
 }
