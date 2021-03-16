@@ -19,6 +19,7 @@ documentation = "https://docs.rs/lowpass-filter/"
 [dev-dependencies]
 audio-visualizer = "0.1.4" # to visualize the output
 minimp3 = "0.5.1" # to test this filter
+wav = "0.6.0" # store was wav
 
 # debug bins will be faster
 [profile.dev]
