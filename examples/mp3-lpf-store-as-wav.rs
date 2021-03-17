@@ -4,6 +4,10 @@ use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
 use std::path::{Path, PathBuf};
 use wav::{Header, BitDepth};
+use spectrum_analyzer::{FrequencyValue, FrequencyLimit, SpectrumTotalScaleFunctionFactory};
+use audio_visualizer::spectrum::staticc::plotters_png_file::spectrum_static_plotters_png_visualize;
+use audio_visualizer::test_support::TEST_OUT_DIR;
+use spectrum_analyzer::windows::hann_window;
 
 /// Takes a path to an mp3 as first argument,
 /// applies a low pass filter n times (second argument)
@@ -39,12 +43,47 @@ fn main() {
         .stereo_interleavement()
         .to_channel_data(&lrlr_mp3_samples);
 
+    // get next lower base of 2
+    let fft_analyze_len = 2_u32.pow((left.len() as f32).log2() as u32) as usize;
+
+    let samples_for_spectrum = left.iter().take(fft_analyze_len).map(|i| *i as f32).collect::<Vec<f32>>();
+    let samples_for_spectrum = hann_window(&samples_for_spectrum);
+    let original_spectrum = spectrum_analyzer::samples_fft_to_spectrum(
+        &samples_for_spectrum,
+        mp3_sample_rate,
+        FrequencyLimit::Max(10000.0),
+        None,
+        Some(get_scale_to_one_fn_factory()),
+    );
+    spectrum_static_plotters_png_visualize(
+        &original_spectrum.to_map(None),
+        TEST_OUT_DIR,
+        "mp3-original-spectrum.png",
+        false,
+    );
+
     for _ in 0..times {
         // left
         apply_lpf_i16_sp(&mut left, 44100, 120);
         // right
         apply_lpf_i16_sp(&mut right, 44100, 120);
     }
+
+    let samples_for_spectrum = left.iter().take(fft_analyze_len).map(|i| *i as f32).collect::<Vec<f32>>();
+    let samples_for_spectrum = hann_window(&samples_for_spectrum);
+    let original_spectrum = spectrum_analyzer::samples_fft_to_spectrum(
+        &samples_for_spectrum,
+        mp3_sample_rate,
+        FrequencyLimit::Max(10000.0),
+        None,
+        Some(get_scale_to_one_fn_factory()),
+    );
+    spectrum_static_plotters_png_visualize(
+        &original_spectrum.to_map(None),
+        TEST_OUT_DIR,
+        "mp3-original-spectrum--lowpassed.png",
+        false,
+    );
 
     let mut stereo_lrlr_data = Vec::with_capacity(left.len() * 2);
     for i in 0..left.len() {
@@ -65,4 +104,8 @@ fn main() {
         &BitDepth::Sixteen(stereo_lrlr_data),
         &mut out_file
     ).unwrap();
+}
+
+fn get_scale_to_one_fn_factory() -> SpectrumTotalScaleFunctionFactory {
+    Box::new(move |_min: f32, max: f32, _average: f32, _median: f32| Box::new(move |x| x / max))
 }

@@ -17,9 +17,10 @@ repository = "https://github.com/phip1611/lowpass-filter"
 documentation = "https://docs.rs/lowpass-filter/"
 
 [dev-dependencies]
-audio-visualizer = "0.1.4" # to visualize the output
+audio-visualizer = "0.2.1" # to visualize the output
 minimp3 = "0.5.1" # to test this filter
 wav = "0.6.0" # store was wav
+spectrum-analyzer = "0.2.2"
 
 # debug bins will be faster
 [profile.dev]
