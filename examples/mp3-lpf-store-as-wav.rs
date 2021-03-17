@@ -1,10 +1,10 @@
 use std::fs::File;
-use audio_visualizer::{Channels, ChannelInterleavement};
+use lowpass_filter::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
 use std::path::{Path, PathBuf};
 use wav::{Header, BitDepth};
-use spectrum_analyzer::{FrequencyValue, FrequencyLimit, SpectrumTotalScaleFunctionFactory};
+use spectrum_analyzer::{FrequencyLimit, SpectrumTotalScaleFunctionFactory};
 use audio_visualizer::spectrum::staticc::plotters_png_file::spectrum_static_plotters_png_visualize;
 use audio_visualizer::test_support::TEST_OUT_DIR;
 use spectrum_analyzer::windows::hann_window;

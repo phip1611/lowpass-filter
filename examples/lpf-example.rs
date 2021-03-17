@@ -24,8 +24,8 @@ SOFTWARE.
 #[macro_use]
 extern crate std;
 
-use audio_visualizer::waveform::staticc::png_file::visualize;
-use audio_visualizer::{ChannelInterleavement, Channels};
+use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
+use lowpass_filter::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
 use std::fs::File;
@@ -55,7 +55,7 @@ fn main() {
     }
 
     // for comparison: visualize original
-    visualize(
+    waveform_static_png_visualize(
         &lrlr_mp3_samples,
         Channels::Stereo(ChannelInterleavement::LRLR),
         "test/out",
@@ -80,13 +80,13 @@ fn main() {
     apply_lpf_i16_sp(&mut right, 44100, 120);
 
     // visualize audio as waveform in a PNG file
-    visualize(
+    waveform_static_png_visualize(
         &left,
         Channels::Mono,
         "test/out",
         "sample_1_waveform_lowpassed_left.png",
     );
-    visualize(
+    waveform_static_png_visualize(
         &right,
         Channels::Mono,
         "test/out",

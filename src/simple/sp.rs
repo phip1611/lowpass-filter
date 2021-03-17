@@ -21,8 +21,7 @@ pub fn apply_lpf_i16_sp(data: &mut [i16], sample_rate_hz: u16, cutoff_frequency_
         // we don't need a copy of the original data, because the original data is accessed
         // before it is overwritten: data[i] = ... data[i]
 
-        data[i] =
-            (data[i - 1] as f32 + alpha * (data[i] as f32 - data[i - 1] as f32)) as i16;
+        data[i] = (data[i - 1] as f32 + alpha * (data[i] as f32 - data[i - 1] as f32)) as i16;
     }
 }
 
@@ -40,7 +39,6 @@ pub fn apply_lpf_i32_sp(data: &mut [i32], sample_rate_hz: u16, cutoff_frequency_
         // we don't need a copy of the original data, because the original data is accessed
         // before it is overwritten: data[i] = ... data[i]
 
-        data[i] =
-            (data[i - 1] as f32 + alpha * (data[i] as f32 - data[i - 1] as f32)) as i32;
+        data[i] = (data[i - 1] as f32 + alpha * (data[i] as f32 - data[i - 1] as f32)) as i32;
     }
 }

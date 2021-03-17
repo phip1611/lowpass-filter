@@ -21,62 +21,39 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! This example reads a MP3, applies a digital low pass filter and visualizes
-//! the waveform in the end.
-#[macro_use]
+//! Minimal example how to use this crate/how to apply low pass filter.
 extern crate std;
 
-use audio_visualizer::waveform::staticc::png_file::visualize;
-use audio_visualizer::{ChannelInterleavement, Channels};
+use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
+use lowpass_filter::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
-use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
-use std::fs::File;
-use std::path::PathBuf;
 
-/// This example reads a MP3, applies a digital low pass filter and visualizes
-/// the waveform in the end.
+/// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
-    let mut path = PathBuf::new();
-    path.push("test/samples");
-    path.push("sample_1.mp3");
-    let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
+    // read this from MP3 for example
+    let audio_data_lrlr = [0_i16, 1, -5, 1551, 141, 24];
 
-    let mut lrlr_mp3_samples = vec![];
-    loop {
-        match decoder.next_frame() {
-            Ok(Mp3Frame {
-                data: samples_of_frame,
-                ..
-            }) => {
-                for sample in samples_of_frame {
-                    lrlr_mp3_samples.push(sample);
-                }
-            }
-            Err(Mp3Error::Eof) => break,
-            Err(e) => panic!("{:?}", e),
-        }
-    }
     // split into left and right channel
     let (mut left, mut right) = Channels::Stereo(ChannelInterleavement::LRLR)
         .stereo_interleavement()
-        .to_channel_data(&lrlr_mp3_samples);
+        .to_channel_data(&audio_data_lrlr);
 
     // left
     apply_lpf_i16_sp(&mut left, 44100, 120);
     // right
     apply_lpf_i16_sp(&mut right, 44100, 120);
 
-    // visualize audio as waveform in a PNG file
-    visualize(
+    // visualize effect as waveform in a PNG file
+    waveform_static_png_visualize(
         &left,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_left.png",
+        "example_waveform_lowpassed_left.png",
     );
-    visualize(
+    waveform_static_png_visualize(
         &right,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_right.png",
+        "example_waveform_lowpassed_right.png",
     );
 }

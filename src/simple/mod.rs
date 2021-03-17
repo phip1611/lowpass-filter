@@ -37,8 +37,8 @@ mod tests {
     use crate::simple::dp::apply_lpf_i16_dp;
     use crate::simple::sp::apply_lpf_i16_sp;
     use crate::test_util::{TEST_OUT_DIR, TEST_SAMPLES_DIR};
-    use audio_visualizer::waveform::staticc::png_file::visualize;
-    use audio_visualizer::{ChannelInterleavement, Channels};
+    use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
+    use crate::{ChannelInterleavement, Channels};
     use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
     use std::fs::File;
     use std::path::PathBuf;
@@ -69,7 +69,7 @@ mod tests {
         }
 
         // for comparison: visualize original
-        visualize(
+        waveform_static_png_visualize(
             &lrlr_mp3_samples,
             Channels::Stereo(ChannelInterleavement::LRLR),
             TEST_OUT_DIR,
@@ -96,13 +96,13 @@ mod tests {
         apply_lpf_i16_sp(&mut right, 44100, 120);
 
         // visualize audio as waveform in a PNG file
-        visualize(
+        waveform_static_png_visualize(
             &left,
             Channels::Mono,
             TEST_OUT_DIR,
             "sample_1_waveform_lowpassed_3times_left.png",
         );
-        visualize(
+        waveform_static_png_visualize(
             &right,
             Channels::Mono,
             TEST_OUT_DIR,

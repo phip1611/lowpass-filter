@@ -6,56 +6,37 @@ get the low frequencies from a song.
 
 ## How to use
 ```rust
-use std::path::PathBuf;
-use std::fs::File;
-use audio_visualizer::waveform::staticc::png_file::visualize;
-use audio_visualizer::{Channels, ChannelInterleavement};
+use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
+use lowpass_filter::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
-use minimp3::{Decoder as Mp3Decoder, Frame as Mp3Frame, Error as Mp3Error};
 
-/// This example reads a MP3, applies a digital low pass filter and visualizes
-/// the waveform in the end.
+/// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
-    let mut path = PathBuf::new();
-    path.push("test/samples");
-    path.push("sample_1.mp3");
-    let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
+    // read this from MP3 for example
+    let audio_data_lrlr = [0_i16, 1, -5, 1551, 141, 24];
 
-    let mut lrlr_mp3_samples = vec![];
-    loop {
-        match decoder.next_frame() {
-            Ok(Mp3Frame { data: samples_of_frame, .. }) => {
-                for sample in samples_of_frame {
-                    lrlr_mp3_samples.push(sample);
-                }
-            }
-            Err(Mp3Error::Eof) => break,
-            Err(e) => panic!("{:?}", e),
-        }
-    }
     // split into left and right channel
     let (mut left, mut right) = Channels::Stereo(ChannelInterleavement::LRLR)
         .stereo_interleavement()
-        .to_channel_data(&lrlr_mp3_samples);
+        .to_channel_data(&audio_data_lrlr);
 
-
-    // left: low pass filter with i16 samples in single precision
+    // left
     apply_lpf_i16_sp(&mut left, 44100, 120);
-    // right: lpf with i16 samples in single precision
+    // right
     apply_lpf_i16_sp(&mut right, 44100, 120);
 
-    // visualize audio as waveform in a PNG file
-    visualize(
+    // visualize effect as waveform in a PNG file
+    waveform_static_png_visualize(
         &left,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_left.png"
+        "example_waveform_lowpassed_left.png",
     );
-    visualize(
+    waveform_static_png_visualize(
         &right,
         Channels::Mono,
         "test/out",
-        "sample_1_waveform_lowpassed_right.png"
+        "example_waveform_lowpassed_right.png",
     );
 }
 ```
