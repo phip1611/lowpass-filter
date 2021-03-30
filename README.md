@@ -7,7 +7,8 @@ get the low frequencies from a song.
 ## How to use
 ```rust
 use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
-use lowpass_filter::{ChannelInterleavement, Channels};
+// audio_visualizer has some cool convenient types that I reuse here
+use audio_visualizer::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
 
 /// Minimal example how to use this crate/how to apply low pass filter.
@@ -16,6 +17,7 @@ fn main() {
     let audio_data_lrlr = [0_i16, 1, -5, 1551, 141, 24];
 
     // split into left and right channel
+    // audio_visualizer has some cool convenient types that I reuse here
     let (mut left, mut right) = Channels::Stereo(ChannelInterleavement::LRLR)
         .stereo_interleavement()
         .to_channel_data(&audio_data_lrlr);

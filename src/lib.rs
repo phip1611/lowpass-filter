@@ -29,9 +29,6 @@ SOFTWARE.
 // use alloc crate, because this is no_std
 extern crate alloc;
 
-/// Re-export convenient audio utilities.
-pub use audio_visualizer::{ChannelInterleavement, Channels};
-
 // use std in tests
 #[cfg(test)]
 #[macro_use]

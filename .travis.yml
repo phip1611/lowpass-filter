@@ -1,5 +1,15 @@
 language: rust
 rust:
   - stable
+  - nightly
 cache: cargo
 
+script:
+  - cargo build --all-targets # test build works
+  - cargo test --all-targets # tests must work
+  - cargo check --target thumbv7em-none-eabihf # test no_std-build works
+  - rustup target add thumbv7em-none-eabihf
+
+  # examples
+  - cargo run --release --example lpf-example
+  - cargo run --release --example lpf-example-minimal

@@ -21,8 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! Simple first order low pass filter as described here:
-//! https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+//! Simple first order low pass filter as described on [Wikipedia](https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter).
 //!
 //! It applies a low pass filter on a vector of samples. It mutates the input array.
 //! Therefore, the number of output values equals the number of input values.
@@ -38,11 +37,11 @@ mod tests {
     use crate::simple::sp::apply_lpf_i16_sp;
     use crate::test_util::{TEST_OUT_DIR, TEST_SAMPLES_DIR};
     use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
-    use crate::{ChannelInterleavement, Channels};
     use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
     use std::fs::File;
     use std::path::PathBuf;
     use std::time::Instant;
+    use audio_visualizer::{Channels, ChannelInterleavement};
 
     /// To see if the test actually works, check the waveform in the image output.
     #[test]
