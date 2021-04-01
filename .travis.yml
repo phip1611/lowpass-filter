@@ -7,8 +7,8 @@ cache: cargo
 script:
   - cargo build --all-targets # test build works
   - cargo test --all-targets # tests must work
-  - cargo check --target thumbv7em-none-eabihf # test no_std-build works
   - rustup target add thumbv7em-none-eabihf
+  - cargo check --target thumbv7em-none-eabihf # test no_std-build works
 
   # examples
   - cargo run --release --example lpf-example
