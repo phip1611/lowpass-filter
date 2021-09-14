@@ -21,26 +21,194 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! Simple first order low pass filter as described on [Wikipedia](https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter).
+//! Simple first order low pass filter as described on
+//! [Wikipedia](https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter).
 //!
 //! It applies a low pass filter on a vector of samples. It mutates the input array.
 //! Therefore, the number of output values equals the number of input values.
 
-/// Double precision / f64 / double.
-pub mod dp;
-/// Single precision / f32 / float.
-pub mod sp;
+use alloc::vec::Vec;
+use core::f32;
+use core::f64;
+use core::ops::{Add, Div, Mul, Sub};
+
+trait FloatTrait:
+    Mul<Output = Self> + Div<Output = Self> + Add<Output = Self> + Sub<Output = Self> + Sized + Copy
+{
+    fn pi() -> Self;
+    fn one() -> Self;
+    fn two() -> Self;
+}
+
+impl FloatTrait for f32 {
+    fn pi() -> Self {
+        f32::consts::PI
+    }
+
+    fn one() -> Self {
+        1.0
+    }
+
+    fn two() -> Self {
+        2.0
+    }
+}
+impl FloatTrait for f64 {
+    fn pi() -> Self {
+        f64::consts::PI
+    }
+
+    fn one() -> Self {
+        1.0
+    }
+
+    fn two() -> Self {
+        2.0
+    }
+}
+
+trait FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType>
+where
+    FloatType: FloatTrait,
+    SampleType: Into<FloatType> + Copy,
+    SamplingRateType: Into<FloatType>,
+    CutoffFrType: Into<FloatType>,
+{
+    fn apply(
+        samples: &[SampleType],
+        sampling_rate: SamplingRateType,
+        cutoff_frequency_hz: CutoffFrType,
+    ) -> Vec<FloatType> {
+        let mut lp_samples = Vec::with_capacity(samples.len());
+        let sampling_rate: FloatType = sampling_rate.into();
+        let cutoff_frequency_hz: FloatType = cutoff_frequency_hz.into();
+        let rc = FloatType::one() / (cutoff_frequency_hz * FloatType::two() * FloatType::pi());
+        let dt = FloatType::one() / sampling_rate;
+        let alpha = dt / (rc + dt);
+
+        lp_samples[0] = alpha * samples[0].into();
+        for i in 1..samples.len() {
+            // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+
+            // the original data is accessed before it is overwritten:
+            // data[i] = ... data[i]
+
+            lp_samples[i] = lp_samples[i - 1] + alpha * (samples[i].into() - lp_samples[i - 1]);
+        }
+
+        lp_samples
+    }
+}
+
+struct Filter;
+impl<FloatType, SampleType, SamplingRateType, CutoffFrType>
+    FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType> for Filter
+where
+    FloatType: FloatTrait,
+    SampleType: Into<FloatType> + Copy,
+    SamplingRateType: Into<FloatType>,
+    CutoffFrType: Into<FloatType>,
+{
+}
+
+#[cfg(test)]
+mod tests2 {
+
+    use super::*;
+
+    #[test]
+    fn test_fo_lw_filter() {
+        let samples_i32 = [
+            2, -2, 2, -2, 4, -4, 6, -6
+        ];
+        let samples_f32 = [
+            2.0_f32, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0
+        ];
+        let samples_f64 = [
+            2.0_f64, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0
+        ];
+        //let res: Vec<f32> = Filter::apply(&samples_f32, 44100, 120);
+        let x: i16 = 5;
+        let y: f32 = x.into();
+    }
+}
+
+/// Common simple/first order low pass filter implementation for f32 and f64.
+macro_rules! lpw_float_impl {
+    ($samples: ident, $sampling_rate_hz: ident, $cutoff_frequency_hz: ident, $pi: path) => {
+        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+        let rc = 1.0 / ($cutoff_frequency_hz * 2.0 * $pi);
+        let dt = 1.0 / $sampling_rate_hz;
+        let alpha = dt / (rc + dt);
+
+        $samples[0] = alpha * $samples[0];
+        for i in 1..$samples.len() {
+            // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+
+            // we don't need a copy of the original data, because the original data is accessed
+            // before it is overwritten: data[i] = ... data[i]
+
+            $samples[i] = $samples[i - 1] + alpha * ($samples[i] - $samples[i - 1]);
+        }
+    };
+}
+
+/// Common trait used for various implementations on [`FirstOrderLowPassFilter`].
+pub trait FirstOrderLowPassFilterFloatTrait<T> {
+    fn filter(samples: &mut [T], sampling_rate_hz: T, cutoff_frequency_hz: T);
+}
+
+/// Zero-sized helper type.
+/// Use the `filter` methods of the available implementations of [`FirstOrderLowPassFilterTrait`].
+///
+/// # Usage
+/// ```ignore
+/// LowPassFilter::filter::<f32::(samples, 44100.0, 120.0);
+/// // or
+/// LowPassFilter::filter::<64::(samples, 44100.0, 120.0);
+/// ```
+pub struct FirstOrderLowPassFilter;
+
+impl FirstOrderLowPassFilterFloatTrait<f64> for FirstOrderLowPassFilter {
+    /// Applies a first order low pass filter on an array of `f64` samples.
+    /// It mutates the input array. Therefore, the number of output values
+    /// equals the number of input values.
+    fn filter(samples: &mut [f64], sampling_rate_hz: f64, cutoff_frequency_hz: f64) {
+        lpw_float_impl!(
+            samples,
+            sampling_rate_hz,
+            cutoff_frequency_hz,
+            f64::consts::PI
+        );
+    }
+}
+
+impl FirstOrderLowPassFilterFloatTrait<f32> for FirstOrderLowPassFilter {
+    /// Applies a first order low pass filter on an array of `f32` samples.
+    /// It mutates the input array. Therefore, the number of output values
+    /// equals the number of input values.
+    fn filter(samples: &mut [f32], sampling_rate_hz: f32, cutoff_frequency_hz: f32) {
+        lpw_float_impl!(
+            samples,
+            sampling_rate_hz,
+            cutoff_frequency_hz,
+            f32::consts::PI
+        );
+    }
+}
 
 #[cfg(test)]
 mod tests {
-    use crate::simple::dp::apply_lpf_i16_dp;
-    use crate::simple::sp::apply_lpf_i16_sp;
+    use super::FirstOrderLowPassFilter;
+    use super::FirstOrderLowPassFilterFloatTrait;
     use crate::test_util::{TEST_OUT_DIR, TEST_SAMPLES_DIR};
+    use alloc::vec::Vec;
     use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
     use audio_visualizer::{ChannelInterleavement, Channels};
     use minimp3::{Decoder as Mp3Decoder, Error as Mp3Error, Frame as Mp3Frame};
     use std::fs::File;
     use std::path::PathBuf;
+    use std::prelude::*;
     use std::time::Instant;
 
     /// To see if the test actually works, check the waveform in the image output.
@@ -80,10 +248,15 @@ mod tests {
             .stereo_interleavement()
             .to_channel_data(&lrlr_mp3_samples);
 
+        let (mut left, mut right) = (
+            left.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
+            right.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
+        );
+
         let now = Instant::now();
         // left
         for _ in 0..3 {
-            apply_lpf_i16_sp(&mut left, 44100, 120);
+            FirstOrderLowPassFilter::filter(&mut left, 44100.0, 120.0);
         }
         let then = now.elapsed();
         println!(
@@ -92,7 +265,12 @@ mod tests {
             left.len()
         );
         // right
-        apply_lpf_i16_sp(&mut right, 44100, 120);
+        FirstOrderLowPassFilter::filter(&mut right, 44100.0, 120.0);
+
+        let (left, right) = (
+            left.into_iter().map(|x| x as i16).collect::<Vec<_>>(),
+            right.into_iter().map(|x| x as i16).collect::<Vec<_>>(),
+        );
 
         // visualize audio as waveform in a PNG file
         waveform_static_png_visualize(
@@ -112,7 +290,7 @@ mod tests {
     /// To see if the test actually works, check the waveform in the image output.
     #[test]
     fn test_compare_sp_dp_lpf() {
-        let mut path = PathBuf::new();
+        /*let mut path = PathBuf::new();
         path.push(TEST_SAMPLES_DIR);
         path.push("sample_1.mp3");
         let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
@@ -152,5 +330,8 @@ mod tests {
 
         // on x86_64/i7-10600K I experienced that both are equally fast IN DEBUG MODE
         // in Release mode SP is of course a few percent faster
+
+
+         */
     }
 }

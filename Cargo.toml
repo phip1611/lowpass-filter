@@ -24,6 +24,7 @@ minimp3 = "0.5.1" # to test this filter
 wav = "1.0.0" # store was wav
 # use rustfft because I use a window length >4096
 spectrum-analyzer = { version = "1.1.2", default-features = false, features = ["rustfft-complex"] }
+# num-traits = { version = "0.2.14", default-features = false, features = ["libm"] }
 
 # debug bins will be faster
 [profile.dev]

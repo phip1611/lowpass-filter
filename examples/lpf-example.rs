@@ -67,6 +67,11 @@ fn main() {
         .stereo_interleavement()
         .to_channel_data(&lrlr_mp3_samples);
 
+    let (mut left, mut right) = (
+        left.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
+        right.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
+    );
+
     let now = Instant::now();
     // left
     apply_lpf_i16_sp(&mut left, 44100, 120);
@@ -78,6 +83,11 @@ fn main() {
     );
     // right
     apply_lpf_i16_sp(&mut right, 44100, 120);
+
+    let (mut left, mut right) = (
+        left.into_iter().map(|x| x as i16).collect::<Vec<_>>(),
+        right.into_iter().map(|x| x as i16).collect::<Vec<_>>(),
+    );
 
     // visualize audio as waveform in a PNG file
     waveform_static_png_visualize(

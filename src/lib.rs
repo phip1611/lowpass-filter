@@ -24,14 +24,14 @@ SOFTWARE.
 //! This is a `no_std` Rust library for simple digital low pass filters. You can use it for
 //! example to get the low frequencies from a song.
 
-#![no_std]
+// use std in tests
+#![cfg_attr(not(test), no_std)]
 
 // use alloc crate, because this is no_std
 extern crate alloc;
 
-// use std in tests
+#[cfg_attr(test, macro_use)]
 #[cfg(test)]
-#[macro_use]
 extern crate std;
 
 pub mod simple;

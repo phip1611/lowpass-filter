@@ -38,6 +38,12 @@ fn main() {
         .stereo_interleavement()
         .to_channel_data(&audio_data_lrlr);
 
+    let (mut left, mut right) = (
+        left.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
+        right.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
+    );
+
+
     // left
     apply_lpf_i16_sp(&mut left, 44100, 120);
     // right
