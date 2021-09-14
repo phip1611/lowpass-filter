@@ -25,8 +25,8 @@ SOFTWARE.
 extern crate std;
 
 use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
+use audio_visualizer::{ChannelInterleavement, Channels};
 use lowpass_filter::simple::sp::apply_lpf_i16_sp;
-use audio_visualizer::{Channels, ChannelInterleavement};
 
 /// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
