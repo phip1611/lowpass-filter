@@ -30,6 +30,7 @@ SOFTWARE.
 // use alloc crate, because this is no_std
 extern crate alloc;
 
+#[allow(unused)]
 #[cfg_attr(test, macro_use)]
 #[cfg(test)]
 extern crate std;
@@ -38,6 +39,7 @@ pub mod simple;
 
 #[cfg(test)]
 mod test_util;
+mod num_traits;
 
 #[cfg(test)]
 mod tests {

@@ -28,86 +28,62 @@ SOFTWARE.
 //! Therefore, the number of output values equals the number of input values.
 
 use alloc::vec::Vec;
-use core::f32;
-use core::f64;
-use core::ops::{Add, Div, Mul, Sub};
+use crate::num_traits::{FloatTrait, NumInto};
 
-trait FloatTrait:
-    Mul<Output = Self> + Div<Output = Self> + Add<Output = Self> + Sub<Output = Self> + Sized + Copy
-{
-    fn pi() -> Self;
-    fn one() -> Self;
-    fn two() -> Self;
-}
 
-impl FloatTrait for f32 {
-    fn pi() -> Self {
-        f32::consts::PI
-    }
-
-    fn one() -> Self {
-        1.0
-    }
-
-    fn two() -> Self {
-        2.0
-    }
-}
-impl FloatTrait for f64 {
-    fn pi() -> Self {
-        f64::consts::PI
-    }
-
-    fn one() -> Self {
-        1.0
-    }
-
-    fn two() -> Self {
-        2.0
-    }
-}
-
-trait FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType>
+/// This trait implements the low pass filter. It is as generic as it can be. It accepts
+/// every possible combination of primitive numeric types. Internally, it calculates with
+/// either `f32` or `f64`. This depends on [`FloatType`].
+pub trait FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType>
 where
     FloatType: FloatTrait,
-    SampleType: Into<FloatType> + Copy,
-    SamplingRateType: Into<FloatType>,
-    CutoffFrType: Into<FloatType>,
+    SamplingRateType: NumInto<FloatType>,
+    CutoffFrType: NumInto<FloatType>,
+    SampleType: NumInto<FloatType> + Copy,
 {
+    #[inline]
     fn apply(
         samples: &[SampleType],
         sampling_rate: SamplingRateType,
         cutoff_frequency_hz: CutoffFrType,
     ) -> Vec<FloatType> {
+        // Vector
         let mut lp_samples = Vec::with_capacity(samples.len());
-        let sampling_rate: FloatType = sampling_rate.into();
-        let cutoff_frequency_hz: FloatType = cutoff_frequency_hz.into();
-        let rc = FloatType::one() / (cutoff_frequency_hz * FloatType::two() * FloatType::pi());
-        let dt = FloatType::one() / sampling_rate;
-        let alpha = dt / (rc + dt);
 
-        lp_samples[0] = alpha * samples[0].into();
+        let sampling_rate: FloatType = sampling_rate.into_num();
+        let cutoff_frequency_hz: FloatType = cutoff_frequency_hz.into_num();
+
+        let rc: FloatType =
+            FloatType::one() / (cutoff_frequency_hz * FloatType::two() * FloatType::pi());
+        let dt: FloatType = FloatType::one() / sampling_rate;
+        let alpha: FloatType = dt / (rc + dt);
+
+        // because the vec is empty at the beginning, this is equivalent to store it at index [i]
+        lp_samples.push(alpha * samples[0].into_num());
         for i in 1..samples.len() {
             // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
 
             // the original data is accessed before it is overwritten:
             // data[i] = ... data[i]
 
-            lp_samples[i] = lp_samples[i - 1] + alpha * (samples[i].into() - lp_samples[i - 1]);
+            // because the vec is empty at the beginning, this is equivalent to store it at index [i]
+            lp_samples
+                .push(lp_samples[i - 1] + alpha * (samples[i].into_num() - lp_samples[i - 1]));
         }
 
         lp_samples
     }
 }
 
+/// Dummy struct which implements [`FirstOrderLowPassFilterTrait`].
 struct Filter;
 impl<FloatType, SampleType, SamplingRateType, CutoffFrType>
     FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType> for Filter
 where
     FloatType: FloatTrait,
-    SampleType: Into<FloatType> + Copy,
-    SamplingRateType: Into<FloatType>,
-    CutoffFrType: Into<FloatType>,
+    SamplingRateType: NumInto<FloatType>,
+    CutoffFrType: NumInto<FloatType>,
+    SampleType: NumInto<FloatType> + Copy,
 {
 }
 
@@ -117,89 +93,24 @@ mod tests2 {
     use super::*;
 
     #[test]
-    fn test_fo_lw_filter() {
-        let samples_i32 = [
-            2, -2, 2, -2, 4, -4, 6, -6
-        ];
-        let samples_f32 = [
-            2.0_f32, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0
-        ];
-        let samples_f64 = [
-            2.0_f64, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0
-        ];
-        //let res: Vec<f32> = Filter::apply(&samples_f32, 44100, 120);
-        let x: i16 = 5;
-        let y: f32 = x.into();
-    }
-}
-
-/// Common simple/first order low pass filter implementation for f32 and f64.
-macro_rules! lpw_float_impl {
-    ($samples: ident, $sampling_rate_hz: ident, $cutoff_frequency_hz: ident, $pi: path) => {
-        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-        let rc = 1.0 / ($cutoff_frequency_hz * 2.0 * $pi);
-        let dt = 1.0 / $sampling_rate_hz;
-        let alpha = dt / (rc + dt);
-
-        $samples[0] = alpha * $samples[0];
-        for i in 1..$samples.len() {
-            // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-
-            // we don't need a copy of the original data, because the original data is accessed
-            // before it is overwritten: data[i] = ... data[i]
-
-            $samples[i] = $samples[i - 1] + alpha * ($samples[i] - $samples[i - 1]);
-        }
-    };
-}
-
-/// Common trait used for various implementations on [`FirstOrderLowPassFilter`].
-pub trait FirstOrderLowPassFilterFloatTrait<T> {
-    fn filter(samples: &mut [T], sampling_rate_hz: T, cutoff_frequency_hz: T);
-}
-
-/// Zero-sized helper type.
-/// Use the `filter` methods of the available implementations of [`FirstOrderLowPassFilterTrait`].
-///
-/// # Usage
-/// ```ignore
-/// LowPassFilter::filter::<f32::(samples, 44100.0, 120.0);
-/// // or
-/// LowPassFilter::filter::<64::(samples, 44100.0, 120.0);
-/// ```
-pub struct FirstOrderLowPassFilter;
-
-impl FirstOrderLowPassFilterFloatTrait<f64> for FirstOrderLowPassFilter {
-    /// Applies a first order low pass filter on an array of `f64` samples.
-    /// It mutates the input array. Therefore, the number of output values
-    /// equals the number of input values.
-    fn filter(samples: &mut [f64], sampling_rate_hz: f64, cutoff_frequency_hz: f64) {
-        lpw_float_impl!(
-            samples,
-            sampling_rate_hz,
-            cutoff_frequency_hz,
-            f64::consts::PI
-        );
-    }
-}
-
-impl FirstOrderLowPassFilterFloatTrait<f32> for FirstOrderLowPassFilter {
-    /// Applies a first order low pass filter on an array of `f32` samples.
-    /// It mutates the input array. Therefore, the number of output values
-    /// equals the number of input values.
-    fn filter(samples: &mut [f32], sampling_rate_hz: f32, cutoff_frequency_hz: f32) {
-        lpw_float_impl!(
-            samples,
-            sampling_rate_hz,
-            cutoff_frequency_hz,
-            f32::consts::PI
-        );
+    fn test_fo_lw_filter_generic_types_compile() {
+        let samples_i32 = [2, -2, 2, -2, 4, -4, 6, -6];
+        let samples_f32 = [2.0_f32, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0];
+        let samples_f64 = [2.0_f64, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0];
+        // test a few combinations of data types
+        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100, 120);
+        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100.0, 120);
+        let _res: Vec<f64> = Filter::apply(&samples_i32, 44100.0, 120.0);
+        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100_u128, 120);
+        let _res: Vec<f64> = Filter::apply(&samples_f32, 44100_u128, 120_f64);
+        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100_u128, 120_i128);
+        let _res: Vec<f64> = Filter::apply(&samples_i32, 44100_u128, 120.0);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::FirstOrderLowPassFilter;
+    /*use super::FirstOrderLowPassFilter;
     use super::FirstOrderLowPassFilterFloatTrait;
     use crate::test_util::{TEST_OUT_DIR, TEST_SAMPLES_DIR};
     use alloc::vec::Vec;
@@ -209,10 +120,10 @@ mod tests {
     use std::fs::File;
     use std::path::PathBuf;
     use std::prelude::*;
-    use std::time::Instant;
+    use std::time::Instant;*/
 
-    /// To see if the test actually works, check the waveform in the image output.
-    #[test]
+    // To see if the test actually works, check the waveform in the image output.
+    /*#[test]
     fn test_visualize_lowpassed_data() {
         let mut path = PathBuf::new();
         path.push(TEST_SAMPLES_DIR);
@@ -333,5 +244,5 @@ mod tests {
 
 
          */
-    }
+    }*/
 }
