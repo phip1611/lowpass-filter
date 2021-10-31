@@ -8,9 +8,9 @@
 /// * `data` audio samples
 /// * `sample_rate_hz` Sample Rate, e.g. 44100Hz
 /// * `cutoff_frequency_hz` upper bound for frequencies to be cut, e.g. 150Hz
-pub fn apply_lpf_i16_dp(data: &mut [i16], sample_rate_hz: u16, cutoff_frequency_hz: u16) {
+pub fn apply_lpf_i16_dp(data: &mut [i16], sample_rate_hz: u32, cutoff_frequency_hz: f64) {
     // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-    let rc = 1.0 / (cutoff_frequency_hz as f64 * 2.0 * core::f64::consts::PI);
+    let rc = 1.0 / (cutoff_frequency_hz * 2.0 * core::f64::consts::PI);
     let dt = 1.0 / sample_rate_hz as f64;
     let alpha = dt / (rc + dt);
 
@@ -26,9 +26,9 @@ pub fn apply_lpf_i16_dp(data: &mut [i16], sample_rate_hz: u16, cutoff_frequency_
 }
 
 /// Same as [`apply_lpf_i16_dp`] but with i32 audio resolution.
-pub fn apply_lpf_i32_dp(data: &mut [i32], sample_rate_hz: u16, cutoff_frequency_hz: u16) {
+pub fn apply_lpf_i32_dp(data: &mut [i32], sample_rate_hz: u32, cutoff_frequency_hz: f64) {
     // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-    let rc = 1.0 / (cutoff_frequency_hz as f64 * 2.0 * core::f64::consts::PI);
+    let rc = 1.0 / (cutoff_frequency_hz * 2.0 * core::f64::consts::PI);
     let dt = 1.0 / sample_rate_hz as f64;
     let alpha = dt / (rc + dt);
 
