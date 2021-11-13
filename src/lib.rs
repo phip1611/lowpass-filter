@@ -25,6 +25,19 @@ SOFTWARE.
 //! example to get the low frequencies from a song.
 //!
 //! **⚠ Prefer crate `biquad` and use this crate only for educational purposes.**
+//!
+//! # Example
+//! ```ignore
+//! use lowpass_filter::lowpass_filter;
+//!
+//! /// Minimal example how to use this crate/how to apply low pass filter.
+//! fn main() {
+//!     // read this from MP3 for example
+//!     let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
+//!     // mutates the input buffer
+//!     lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
+//! }
+//! ```
 
 #![deny(
     clippy::all,
