@@ -4,6 +4,14 @@ get the low frequencies from a song.
 
 **I'm not an expert on digital signal processing. Code contributions are highly welcome! :)**
 
+## Difference to `biquad`
+**⚠ TL;DR: Prefer crate `biquad` and use this crate only for educational purposes.** \
+This crate provides a basic and simple to understand, first order lowpass filter. The [biquad](https://crates.io/crates/biquad)
+crate offers second order filters, with higher accuracy. Due to my testing, a lowpass filter with `biquad` has the same 
+computational costs as my crate, but offers a **better resolution for actually cutting of signals above the 
+cut-off frequency while the preserved signal will be less attenuated**, compared to my filter implementation.
+For production, please use `biquad`.
+
 ## How to use
 ```rust
 use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
