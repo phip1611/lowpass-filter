@@ -23,108 +23,156 @@ SOFTWARE.
 */
 //! This is a `no_std` Rust library for simple digital low pass filters. You can use it for
 //! example to get the low frequencies from a song.
+//!
+//! **⚠ Prefer crate `biquad` and use this crate only for educational purposes.**
 
+#![deny(
+    clippy::all,
+    clippy::cargo,
+    clippy::nursery,
+    // clippy::restriction,
+    // clippy::pedantic
+)]
+// now allow a few rules which are denied by the above statement
+// --> they are ridiculous and not necessary
+#![allow(
+    clippy::suboptimal_flops,
+    clippy::redundant_pub_crate,
+    clippy::fallible_impl_from
+)]
+#![deny(missing_debug_implementations)]
+#![deny(rustdoc::all)]
 // use std in tests
 #![cfg_attr(not(test), no_std)]
 
 // use alloc crate, because this is no_std
 extern crate alloc;
 
-#[allow(unused)]
 #[cfg_attr(test, macro_use)]
 #[cfg(test)]
 extern crate std;
 
-pub mod simple;
+/// Applies a single-order lowpass filter with single precisioun to the data provided in the mutable buffer.
+pub fn lowpass_filter(data: &mut [f32], sampling_rate: f32, cutoff_frequency: f32) {
+    // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+    let rc = 1.0 / (cutoff_frequency * 2.0 * core::f32::consts::PI);
+    // time per sample
+    let dt = 1.0 / sampling_rate;
+    let alpha = dt / (rc + dt);
 
-mod num_traits;
+    data[0] *= alpha;
+    for i in 1..data.len() {
+        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+
+        // we don't need a copy of the original data, because the original data is accessed
+        // before it is overwritten: data[i] = ... data[i]
+        data[i] = data[i - 1] + alpha * (data[i] - data[i - 1]);
+    }
+}
+
+/// Applies a single-order lowpass filter with double precision to the data provided in the mutable buffer.
+pub fn lowpass_filter_f64(data: &mut [f64], sampling_rate: f64, cutoff_frequency: f64) {
+    // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+    let rc = 1.0 / (cutoff_frequency * 2.0 * core::f64::consts::PI);
+    // time per sample
+    let dt = 1.0 / sampling_rate;
+    let alpha = dt / (rc + dt);
+
+    data[0] *= alpha;
+    for i in 1..data.len() {
+        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+
+        // we don't need a copy of the original data, because the original data is accessed
+        // before it is overwritten: data[i] = ... data[i]
+        data[i] = data[i - 1] + alpha * (data[i] - data[i - 1]);
+    }
+}
+
 #[cfg(test)]
 mod test_util;
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec::Vec;
-    use core::f64::consts::PI;
-    use wav::{Header, BitDepth};
-    use std::fs::File;
-    use audio_visualizer::waveform::staticc::plotters_png_file::waveform_static_plotters_png_visualize;
+    use super::*;
+    use crate::test_util::{calculate_power, sine_wave_samples, TEST_OUT_DIR};
+    use audio_visualizer::waveform::plotters_png_file::waveform_static_plotters_png_visualize;
     use audio_visualizer::Channels;
-    use crate::simple::{Filter, FirstOrderLowPassFilterTrait};
-    use crate::test_util::TEST_OUT_DIR;
-
-    fn sine_wave(fr: f64) -> impl Fn(f64) -> f64 {
-        move |time| (2.0 * PI * fr * time).sin()
-    }
-
-    fn sine_wave_samples(fr: u32, sampling_rate: u32) -> Vec<i16> {
-        let sine_wave = sine_wave(fr as f64);
-        // 2 seconds long
-        (0..(2 * sampling_rate))
-            .map(|x| x as f64)
-            .map(|t| t / sampling_rate as f64)
-            .map(|t| sine_wave(t) * i16::MAX as f64)
-            .map(|x| x as i16)
-            .collect::<Vec<_>>()
-    }
-
-    fn calculate_power(samples: &[i16]) -> u128 {
-        let data = samples.iter()
-            .map(|x| *x as f64)
-            .map(|x| x / i16::MAX as f64)
-            .map(|x| x * x)
-            .collect::<Vec<f64>>();
-
-        let mut sum = 0.0;
-        for x in data {
-            sum += x;
-        }
-
-        sum as u128
-    }
+    use std::vec::Vec;
 
     #[test]
-    fn test_lpf() {
-        let samples_l = sine_wave_samples(120, 44100);
-        let samples_h = sine_wave_samples(250, 44100);
+    fn test_lpf_and_visualize() {
+        let samples_l_orig = sine_wave_samples(120.0, 44100.0);
+        let samples_h_orig = sine_wave_samples(350.0, 44100.0);
 
-        let _power_l_before: u128 = calculate_power(&samples_l);
-        let _power_h_before: u128 = calculate_power(&samples_h);
-
-
-        /*waveform_static_plotters_png_visualize(
-            &samples_l,
+        waveform_static_plotters_png_visualize(
+            &samples_l_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
             Channels::Mono,
             TEST_OUT_DIR,
-            "test_lpf_l_before.png"
+            "test_lpf_l_orig.png",
         );
         waveform_static_plotters_png_visualize(
-            &samples_h,
+            &samples_h_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
             Channels::Mono,
             TEST_OUT_DIR,
-            "test_lpf_h_before.png"
-        );*/
+            "test_lpf_h_orig.png",
+        );
 
-        let samples_l = Filter::<f32>::apply(&samples_l, 44100, 90);
-        let samples_h = Filter::<f32>::apply(&samples_h, 44100, 90);
+        let mut samples_l_lowpassed = samples_l_orig.clone();
+        let mut samples_h_lowpassed = samples_h_orig.clone();
 
-        let power_l_after = calculate_power(&samples_l);
-        let power_h_after = calculate_power(&samples_h);
+        let power_l_orig = calculate_power(&samples_l_orig);
+        let power_h_orig = calculate_power(&samples_h_orig);
 
-        assert!(power_h_after * 3 <= power_l_after, "LPF must actively remove frequencies above threshold");
+        lowpass_filter_f64(samples_l_lowpassed.as_mut_slice(), 44100.0, 90.0);
+        lowpass_filter_f64(samples_h_lowpassed.as_mut_slice(), 44100.0, 90.0);
 
-        /*waveform_static_plotters_png_visualize(
-            &samples_l,
+        let power_l_lowpassed = calculate_power(&samples_l_lowpassed);
+        let power_h_lowpassed = calculate_power(&samples_h_lowpassed);
+
+        waveform_static_plotters_png_visualize(
+            &samples_l_lowpassed
+                .iter()
+                .map(|x| *x as i16)
+                .collect::<Vec<_>>(),
             Channels::Mono,
             TEST_OUT_DIR,
-            "test_lpf_l_after.png"
+            "test_lpf_l_after.png",
         );
         waveform_static_plotters_png_visualize(
-            &samples_h,
+            &samples_h_lowpassed
+                .iter()
+                .map(|x| *x as i16)
+                .collect::<Vec<_>>(),
             Channels::Mono,
             TEST_OUT_DIR,
-            "test_lpf_h_after.png"
-        );*/
+            "test_lpf_h_after.png",
+        );
+
+        assert!(power_h_lowpassed < power_h_orig);
+        assert!(power_l_lowpassed < power_l_orig);
+
+        assert!(power_h_lowpassed <= 3.0 * power_h_lowpassed);
+        assert!(
+            power_h_lowpassed * 3.0 <= power_l_lowpassed,
+            "LPF must actively remove frequencies above threshold"
+        );
     }
 
+    /// Tests if the functions with f32 and f64 behave similar.
+    #[test]
+    fn test_lpf_f32_f64() {
+        let samples_h_orig = sine_wave_samples(350.0, 44100.0);
+        let mut lowpassed_f32 = samples_h_orig.iter().map(|x| *x as f32).collect::<Vec<_>>();
+        #[allow(clippy::redundant_clone)]
+        let mut lowpassed_f64 = samples_h_orig.clone();
 
+        lowpass_filter(lowpassed_f32.as_mut_slice(), 44100.0, 90.0);
+        lowpass_filter_f64(lowpassed_f64.as_mut_slice(), 44100.0, 90.0);
+
+        let power_f32 =
+            calculate_power(&lowpassed_f32.iter().map(|x| *x as f64).collect::<Vec<_>>());
+        let power_f64 = calculate_power(&lowpassed_f64);
+
+        assert!((power_f32 as f64 - power_f64).abs() <= 0.00024);
+    }
 }

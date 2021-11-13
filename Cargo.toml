@@ -6,7 +6,7 @@ get the low frequencies from a song.
 """
 version = "0.3.0"
 authors = ["Philipp Schuster <phip1611@gmail.com>"]
-edition = "2018"
+edition = "2021"
 keywords = ["audio", "filter", "digital", "lowpass", "dsp"]
 categories = ["multimedia", "no-std"]
 readme = "README.md"
@@ -19,12 +19,11 @@ documentation = "https://docs.rs/lowpass-filter/"
 [dependencies]
 
 [dev-dependencies]
-audio-visualizer = "0.3.0" # to visualize the output
+audio-visualizer = "0.3" # to visualize the output
 minimp3 = "0.5" # to test this filter
 wav = "1.0" # store was wav
 # use rustfft because I use a window length >4096
 spectrum-analyzer = { version = "1.1", default-features = false, features = ["rustfft-complex"] }
-# num-traits = { version = "0.2.14", default-features = false, features = ["libm"] }
 
 # debug bins will be faster
 [profile.dev]

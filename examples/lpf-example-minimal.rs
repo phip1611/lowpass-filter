@@ -22,19 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 //! Minimal example how to use this crate/how to apply low pass filter.
-extern crate std;
-
-use audio_visualizer::Channels;
-use lowpass_filter::simple::{Filter, FirstOrderLowPassFilterTrait};
+use lowpass_filter::lowpass_filter;
 
 /// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
     // read this from MP3 for example
-    let mono_audio_data = [0_i16, 1, -5, 1551, 141, 24];
-
-    // generic parameter specifies the precision of the internal calculation
-    // function consumes any combination of primitive data types; it returns the type of the
-    // input samples
-    let _left = Filter::<f32>::apply(&left, 44100, 120);
-    let _right = Filter::<f32>::apply(&right, 44100, 120);
+    let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
+    // mutates the input buffer
+    lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
 }
