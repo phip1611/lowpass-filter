@@ -24,42 +24,17 @@ SOFTWARE.
 //! Minimal example how to use this crate/how to apply low pass filter.
 extern crate std;
 
-use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
-use audio_visualizer::{ChannelInterleavement, Channels};
-use lowpass_filter::simple::sp::apply_lpf_i16_sp;
+use audio_visualizer::Channels;
+use lowpass_filter::simple::{Filter, FirstOrderLowPassFilterTrait};
 
 /// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
     // read this from MP3 for example
-    let audio_data_lrlr = [0_i16, 1, -5, 1551, 141, 24];
+    let mono_audio_data = [0_i16, 1, -5, 1551, 141, 24];
 
-    // split into left and right channel
-    let (mut left, mut right) = Channels::Stereo(ChannelInterleavement::LRLR)
-        .stereo_interleavement()
-        .to_channel_data(&audio_data_lrlr);
-
-    let (mut left, mut right) = (
-        left.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
-        right.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
-    );
-
-
-    // left
-    apply_lpf_i16_sp(&mut left, 44100, 120);
-    // right
-    apply_lpf_i16_sp(&mut right, 44100, 120);
-
-    // visualize effect as waveform in a PNG file
-    waveform_static_png_visualize(
-        &left,
-        Channels::Mono,
-        "test/out",
-        "example_waveform_lowpassed_left.png",
-    );
-    waveform_static_png_visualize(
-        &right,
-        Channels::Mono,
-        "test/out",
-        "example_waveform_lowpassed_right.png",
-    );
+    // generic parameter specifies the precision of the internal calculation
+    // function consumes any combination of primitive data types; it returns the type of the
+    // input samples
+    let _left = Filter::<f32>::apply(&left, 44100, 120);
+    let _right = Filter::<f32>::apply(&right, 44100, 120);
 }

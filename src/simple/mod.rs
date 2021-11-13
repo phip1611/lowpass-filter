@@ -27,28 +27,29 @@ SOFTWARE.
 //! It applies a low pass filter on a vector of samples. It mutates the input array.
 //! Therefore, the number of output values equals the number of input values.
 
+use crate::num_traits::{FloatTrait, NumFromAs, NumInto};
 use alloc::vec::Vec;
-use crate::num_traits::{FloatTrait, NumInto};
-
+use core::marker::PhantomData;
 
 /// This trait implements the low pass filter. It is as generic as it can be. It accepts
 /// every possible combination of primitive numeric types. Internally, it calculates with
-/// either `f32` or `f64`. This depends on [`FloatType`].
+/// either `f32` or `f64`. This depends on [`FloatType`]. It returns the number with the
+/// same data type as the input data.
 pub trait FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType>
 where
     FloatType: FloatTrait,
     SamplingRateType: NumInto<FloatType>,
     CutoffFrType: NumInto<FloatType>,
-    SampleType: NumInto<FloatType> + Copy,
+    SampleType: NumInto<FloatType> + NumFromAs<FloatType> + Copy,
 {
     #[inline]
     fn apply(
         samples: &[SampleType],
         sampling_rate: SamplingRateType,
         cutoff_frequency_hz: CutoffFrType,
-    ) -> Vec<FloatType> {
-        // Vector
-        let mut lp_samples = Vec::with_capacity(samples.len());
+    ) -> Vec<SampleType> {
+        // Vector: working set as floating point
+        let mut lp_samples: Vec<FloatType> = Vec::with_capacity(samples.len());
 
         let sampling_rate: FloatType = sampling_rate.into_num();
         let cutoff_frequency_hz: FloatType = cutoff_frequency_hz.into_num();
@@ -58,7 +59,7 @@ where
         let dt: FloatType = FloatType::one() / sampling_rate;
         let alpha: FloatType = dt / (rc + dt);
 
-        // because the vec is empty at the beginning, this is equivalent to store it at index [i]
+        // because the vec is empty at the beginning, .push() is equivalent to store it at index [i]
         lp_samples.push(alpha * samples[0].into_num());
         for i in 1..samples.len() {
             // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
@@ -66,24 +67,29 @@ where
             // the original data is accessed before it is overwritten:
             // data[i] = ... data[i]
 
-            // because the vec is empty at the beginning, this is equivalent to store it at index [i]
-            lp_samples
-                .push(lp_samples[i - 1] + alpha * (samples[i].into_num() - lp_samples[i - 1]));
+            let sample = lp_samples[i - 1] + alpha * (samples[i].into_num() - lp_samples[i - 1]);
+            // because the vec is empty at the beginning, .push() is equivalent to store it at index [i]
+            lp_samples.push(sample);
         }
 
-        lp_samples
+        // cast data to desired output type
+        lp_samples.into_iter()
+            .map(|x| SampleType::from_num(x))
+            .collect()
     }
 }
 
 /// Dummy struct which implements [`FirstOrderLowPassFilterTrait`].
-struct Filter;
+/// It consumes either `f32` or `f64` as generic parameter, which describes
+/// the internal calculation of the filter.
+pub struct Filter<T>(PhantomData<T>);
 impl<FloatType, SampleType, SamplingRateType, CutoffFrType>
-    FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType> for Filter
+    FirstOrderLowPassFilterTrait<FloatType, SampleType, SamplingRateType, CutoffFrType> for Filter<FloatType>
 where
     FloatType: FloatTrait,
     SamplingRateType: NumInto<FloatType>,
     CutoffFrType: NumInto<FloatType>,
-    SampleType: NumInto<FloatType> + Copy,
+    SampleType: NumInto<FloatType> + NumFromAs<FloatType> + Copy,
 {
 }
 
@@ -98,13 +104,13 @@ mod tests2 {
         let samples_f32 = [2.0_f32, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0];
         let samples_f64 = [2.0_f64, -2.0, 2.0, -2.0, 4.0, -4.0, 6.0, -6.0];
         // test a few combinations of data types
-        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100, 120);
-        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100.0, 120);
-        let _res: Vec<f64> = Filter::apply(&samples_i32, 44100.0, 120.0);
-        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100_u128, 120);
-        let _res: Vec<f64> = Filter::apply(&samples_f32, 44100_u128, 120_f64);
-        let _res: Vec<f64> = Filter::apply(&samples_f64, 44100_u128, 120_i128);
-        let _res: Vec<f64> = Filter::apply(&samples_i32, 44100_u128, 120.0);
+        let _res = Filter::<f32>::apply(&samples_f64, 44100, 120);
+        let _res = Filter::<f32>::apply(&samples_f64, 44100.0, 120);
+        let _res = Filter::<f32>::apply(&samples_i32, 44100.0, 120.0);
+        let _res = Filter::<f32>::apply(&samples_f64, 44100_usize, 120);
+        let _res = Filter::<f64>::apply(&samples_f32, 44100_u128, 120_f64);
+        let _res = Filter::<f64>::apply(&samples_f64, 44100_i128, 120_i128);
+        let _res = Filter::<f64>::apply(&samples_i32, 44100, 120.0);
     }
 }
 

@@ -67,6 +67,8 @@ macro_rules! impl_num_from_trait_all_to {
         impl_num_from_trait!(u128, $float_type);
         impl_num_from_trait!(f32, $float_type);
         impl_num_from_trait!(f64, $float_type);
+        impl_num_from_trait!(usize, $float_type);
+        impl_num_from_trait!(isize, $float_type);
     };
 }
 
@@ -74,6 +76,18 @@ macro_rules! impl_num_from_trait_all_to {
 // by only using type system magic.
 impl_num_from_trait_all_to!(f32);
 impl_num_from_trait_all_to!(f64);
+impl_num_from_trait_all_to!(i8);
+impl_num_from_trait_all_to!(i16);
+impl_num_from_trait_all_to!(i32);
+impl_num_from_trait_all_to!(i64);
+impl_num_from_trait_all_to!(i128);
+impl_num_from_trait_all_to!(u8);
+impl_num_from_trait_all_to!(u16);
+impl_num_from_trait_all_to!(u32);
+impl_num_from_trait_all_to!(u64);
+impl_num_from_trait_all_to!(u128);
+impl_num_from_trait_all_to!(usize);
+impl_num_from_trait_all_to!(isize);
 
 /// Is to [`NumFromAs`] what [`Into`] is to [`From`].
 pub trait NumInto<D> {
