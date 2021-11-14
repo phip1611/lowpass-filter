@@ -12,5 +12,4 @@ cargo fmt -- --check
 cargo clippy --all-targets
 
 # run examples
-cargo run --example lpf-example
 cargo run --example lpf-example-minimal
