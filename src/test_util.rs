@@ -32,6 +32,7 @@ pub fn sine_wave(fr: f64) -> impl Fn(f64) -> f64 {
     move |time| (2.0 * PI * fr * time).sin()
 }
 
+/// Creates a two second long audio snippet from the given frequency.
 pub fn sine_wave_samples(fr: f64, sampling_rate: f64) -> Vec<f64> {
     let sine_wave = sine_wave(fr);
     // 2 seconds long

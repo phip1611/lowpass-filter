@@ -110,6 +110,8 @@ mod tests {
     use crate::test_util::{calculate_power, sine_wave_samples, TEST_OUT_DIR};
     use audio_visualizer::waveform::plotters_png_file::waveform_static_plotters_png_visualize;
     use audio_visualizer::Channels;
+    use biquad::{Biquad, Coefficients, DirectForm1, ToHertz, Type, Q_BUTTERWORTH_F64};
+    use std::time::Instant;
     use std::vec::Vec;
 
     #[test]
@@ -187,5 +189,47 @@ mod tests {
         let power_f64 = calculate_power(&lowpassed_f64);
 
         assert!((power_f32 as f64 - power_f64).abs() <= 0.00024);
+    }
+
+    #[ignore]
+    #[test]
+    fn test_lowpass_filter_vs_biquad() {
+        let samples_orig = sine_wave_samples(350.0, 44100.0);
+        let mut samples = samples_orig.clone();
+
+        let now = Instant::now();
+        for _ in 0..1000 {
+            lowpass_filter_f64(samples.as_mut_slice(), 44100.0, 90.0);
+        }
+        let duration_lowpass_filter = now.elapsed().as_secs_f64() / 1000.0;
+
+        let duration_biquad = {
+            let f0 = 80.hz();
+            let fs = 44.1.khz();
+
+            // Create coefficients for the biquads
+            let coeffs =
+                Coefficients::<f64>::from_params(Type::LowPass, fs, f0, Q_BUTTERWORTH_F64).unwrap();
+            let mut lowpassed_data = Vec::with_capacity(samples_orig.len());
+            let mut biquad_lpf = DirectForm1::<f64>::new(coeffs);
+
+            let now = Instant::now();
+            for _ in 0..1000 {
+                samples_orig
+                    .iter()
+                    .for_each(|val| lowpassed_data.push(biquad_lpf.run(*val)));
+            }
+
+            now.elapsed().as_secs_f64() / 1000.0
+        };
+
+        println!(
+            "lowpass filter on average: {}µs",
+            duration_lowpass_filter * 1_000_000.0
+        );
+        println!(
+            "biquad filter on average : {}µs",
+            duration_biquad * 1_000_000.0
+        );
     }
 }
