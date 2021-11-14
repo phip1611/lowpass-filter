@@ -1,45 +1,27 @@
 # Rust: `no_std` digital low pass filter library
-This is a `no_std` Rust library for simple digital low pass filters. You can use it for example to 
+This is a `no_std` Rust library for simple digital low pass filters. You can use it for example to
 get the low frequencies from a song.
 
 **I'm not an expert on digital signal processing. Code contributions are highly welcome! :)**
 
+## Difference to `biquad`
+**⚠ TL;DR: Prefer crate `biquad` and use this crate only for educational purposes.** \
+This crate provides a basic and simple to understand, first order lowpass filter. The [biquad](https://crates.io/crates/biquad)
+crate offers second order filters, with higher accuracy. Due to my testing, a lowpass filter with `biquad` has the same
+computational costs as my crate, but offers a **better resolution for actually cutting of signals above the
+cut-off frequency while the preserved signal will be less attenuated**, compared to my filter implementation.
+For production, please use `biquad`.
+
 ## How to use
 ```rust
-use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
-// audio_visualizer has some cool convenient types that I reuse here
-use audio_visualizer::{ChannelInterleavement, Channels};
-use lowpass_filter::simple::sp::apply_lpf_i16_sp;
+use lowpass_filter::lowpass_filter;
 
 /// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
     // read this from MP3 for example
-    let audio_data_lrlr = [0_i16, 1, -5, 1551, 141, 24];
-
-    // split into left and right channel
-    // audio_visualizer has some cool convenient types that I reuse here
-    let (mut left, mut right) = Channels::Stereo(ChannelInterleavement::LRLR)
-        .stereo_interleavement()
-        .to_channel_data(&audio_data_lrlr);
-
-    // left
-    apply_lpf_i16_sp(&mut left, 44100, 120);
-    // right
-    apply_lpf_i16_sp(&mut right, 44100, 120);
-
-    // visualize effect as waveform in a PNG file
-    waveform_static_png_visualize(
-        &left,
-        Channels::Mono,
-        "test/out",
-        "example_waveform_lowpassed_left.png",
-    );
-    waveform_static_png_visualize(
-        &right,
-        Channels::Mono,
-        "test/out",
-        "example_waveform_lowpassed_right.png",
-    );
+    let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
+    // mutates the input buffer
+    lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
 }
 ```
 

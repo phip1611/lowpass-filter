@@ -22,44 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 //! Minimal example how to use this crate/how to apply low pass filter.
-extern crate std;
-
-use audio_visualizer::waveform::staticc::png_file::waveform_static_png_visualize;
-use audio_visualizer::{ChannelInterleavement, Channels};
-use lowpass_filter::simple::sp::apply_lpf_i16_sp;
+use lowpass_filter::lowpass_filter;
 
 /// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
     // read this from MP3 for example
-    let audio_data_lrlr = [0_i16, 1, -5, 1551, 141, 24];
-
-    // split into left and right channel
-    let (mut left, mut right) = Channels::Stereo(ChannelInterleavement::LRLR)
-        .stereo_interleavement()
-        .to_channel_data(&audio_data_lrlr);
-
-    let (mut left, mut right) = (
-        left.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
-        right.into_iter().map(|x| x as f32).collect::<Vec<_>>(),
-    );
-
-
-    // left
-    apply_lpf_i16_sp(&mut left, 44100, 120);
-    // right
-    apply_lpf_i16_sp(&mut right, 44100, 120);
-
-    // visualize effect as waveform in a PNG file
-    waveform_static_png_visualize(
-        &left,
-        Channels::Mono,
-        "test/out",
-        "example_waveform_lowpassed_left.png",
-    );
-    waveform_static_png_visualize(
-        &right,
-        Channels::Mono,
-        "test/out",
-        "example_waveform_lowpassed_right.png",
-    );
+    let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
+    // mutates the input buffer
+    lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
 }
