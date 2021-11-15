@@ -27,12 +27,12 @@ fn main() {
 
 ## Visual Examples
 ### #1: Original Waveform of a short sample
-![Example 1: Original Waveform of a short sample](sample1_waveform.png "Example 1: Original Waveform of a short sample")
+![Example 1: Original Waveform of a short sample](res/sample1_waveform.png "Example 1: Original Waveform of a short sample")
 ### #1: Lowpassed Waveform
-![Example 1: Lowpassed Waveform of a short sample](sample1_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a short sample")
+![Example 1: Lowpassed Waveform of a short sample](res/sample1_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a short sample")
 ### #2: Original Waveform of a song
-![Example 1: Original Waveform of a song](song_waveform.png "Example 1: Original Waveform of a song")
+![Example 1: Original Waveform of a song](res/song_waveform.png "Example 1: Original Waveform of a song")
 ### #2: Lowpassed Waveform
-![Example 1: Lowpassed Waveform of a song](song_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a song")
+![Example 1: Lowpassed Waveform of a song](res/song_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a song")
 ### #2: 3x Lowpassed Waveform
-![Example 1: Lowpassed Waveform of a song 3x](song_waveform_lowpassed_3x.png "Example 1: Lowpassed Original Waveform of a song 3 times")
+![Example 1: Lowpassed Waveform of a song 3x](res/song_waveform_lowpassed_3x.png "Example 1: Lowpassed Original Waveform of a song 3 times")
