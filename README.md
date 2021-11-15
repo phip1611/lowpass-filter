@@ -2,8 +2,6 @@
 This is a `no_std` Rust library for simple digital low pass filters. You can use it for example to
 get the low frequencies from a song.
 
-**I'm not an expert on digital signal processing. Code contributions are highly welcome! :)**
-
 ## Difference to `biquad`
 **⚠ TL;DR: Prefer crate `biquad` and use this crate only for educational purposes.** \
 This crate provides a basic and simple to understand, first order lowpass filter. The [biquad](https://crates.io/crates/biquad)
