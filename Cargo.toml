@@ -4,17 +4,20 @@ description = """
 This is a `no_std` Rust library for simple digital low pass filters. You can use it for example to
 get the low frequencies from a song.
 """
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Philipp Schuster <phip1611@gmail.com>"]
 edition = "2021"
 keywords = ["audio", "filter", "digital", "lowpass", "dsp"]
 categories = ["multimedia", "no-std"]
 readme = "README.md"
 license = "MIT"
-
 homepage = "https://github.com/phip1611/lowpass-filter"
 repository = "https://github.com/phip1611/lowpass-filter"
 documentation = "https://docs.rs/lowpass-filter/"
+exclude = [
+    ".github",
+    "test"
+]
 
 [dependencies]
 
