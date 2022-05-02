@@ -4,42 +4,56 @@ name: Build
 on: [ push, pull_request ]
 
 env:
-    CARGO_TERM_COLOR: always
+  CARGO_TERM_COLOR: always
 
 jobs:
-    build:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                rust:
-                    - stable
-                    - nightly
-                    - 1.56.1 # MSRV
-        steps:
-            -   uses: actions/checkout@v2
-            # required because of "audio-visualizer"
-            -   run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev -y
-            -   name: test regular build
-                run: cargo build --all-targets
-            -   run: cargo test
-            -   name: install some no_std target
-                run: rustup target add thumbv7em-none-eabihf
-            -   name: test no_std build
-                run: cargo build --target thumbv7em-none-eabihf # test no_std-build
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - nightly
+          - 1.56.1 # MSRV
+    steps:
+      - uses: actions/checkout@v2
+      # Important preparation step: override the latest default Rust version in GitHub CI
+      # with the current value of the iteration in the "strategy.matrix.rust"-array.
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: ${{ matrix.rust }}
+          override: true
+      # required because of "audio-visualizer"
+      - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev -y
+      - name: test regular build
+        run: cargo build --all-targets
+      - run: cargo test
+      - name: install some no_std target
+        run: rustup target add thumbv7em-none-eabihf
+      - name: test no_std build
+        run: cargo build --target thumbv7em-none-eabihf # test no_std-build
 
-    style_checks:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                rust:
-                    - stable
-        steps:
-            -   uses: actions/checkout@v2
-            # required because of "audio-visualizer"
-            -   run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev -y
-            -   name: Rustfmt (checks all source code/all features)
-                run: cargo fmt -- --check
-            -   name: Clippy
-                run: cargo clippy --all-targets
-            -   name: Rustdoc
-                run: cargo doc
+  style_checks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - uses: actions/checkout@v2
+      # Important preparation step: override the latest default Rust version in GitHub CI
+      # with the current value of the iteration in the "strategy.matrix.rust"-array.
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: default
+          toolchain: ${{ matrix.rust }}
+          override: true
+      # required because of "audio-visualizer"
+      - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev -y
+      - name: Rustfmt (checks all source code/all features)
+        run: cargo fmt -- --check
+      - name: Clippy
+        run: cargo clippy --all-targets
+      - name: Rustdoc
+        run: cargo doc
