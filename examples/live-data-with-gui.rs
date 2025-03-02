@@ -17,7 +17,7 @@ fn main() {
         AudioDevAndCfg::new(None, None),
         // lowpass filter
         TransformFn::Basic(|x, sampling_rate| {
-            let mut data = x.iter().copied().collect::<Vec<_>>();
+            let mut data = x.to_vec();
             lowpass_filter(&mut data, sampling_rate, 120.0);
             data
         }),
