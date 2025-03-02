@@ -220,6 +220,8 @@ mod tests {
                     .for_each(|val| lowpassed_data.push(biquad_lpf.run(*val)));
             }
 
+            let _x = core::hint::black_box(lowpassed_data);
+
             now.elapsed().as_secs_f64() / 1000.0
         };
 

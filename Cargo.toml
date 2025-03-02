@@ -25,7 +25,7 @@ exclude = [
 [dev-dependencies]
 audio-visualizer = "0.3" # to visualize the output
 minimp3 = "0.5" # to test this filter
-wav = "1.0" # store was wav
+wav = "=1.0.0" # store was wav
 # use rustfft because I use a window length >4096
 spectrum-analyzer = { version = "1.1", default-features = false, features = ["rustfft-complex"] }
 biquad = "0.4"

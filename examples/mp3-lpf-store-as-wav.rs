@@ -76,7 +76,7 @@ fn main() {
 /// Reads the mp3 to a vector of the decoded LRLR (left, right, left, right)
 /// data. Second return value is the sampling rate.
 fn mp3_to_lrlr_audio(path: &Path) -> (Vec<i16>, f32) {
-    let mut decoder = Mp3Decoder::new(File::open(&path).unwrap());
+    let mut decoder = Mp3Decoder::new(File::open(path).unwrap());
 
     let mut lrlr_mp3_samples = vec![];
     let mut mp3_sample_rate = None;
@@ -113,7 +113,7 @@ fn samples_to_spectrum_and_plot(audio_data: &[f32], sampling_rate: f32, filename
         Some(&scale_to_zero_to_one),
     )
     .unwrap();
-    spectrum_static_plotters_png_visualize(&original_spectrum.to_map(None), "test/out", filename);
+    spectrum_static_plotters_png_visualize(&original_spectrum.to_map(), "test/out", filename);
 }
 
 fn store_data_as_wav(left_audio: &[f32], right_audio: &[f32], path: &Path, sample_rate: f32) {
@@ -124,7 +124,7 @@ fn store_data_as_wav(left_audio: &[f32], right_audio: &[f32], path: &Path, sampl
     }
 
     let original_filename = path.file_name().unwrap().to_str().unwrap();
-    let new_path = path.with_file_name(&format!("{}--lowpassed.wav", original_filename));
+    let new_path = path.with_file_name(format!("{}--lowpassed.wav", original_filename));
     let mut out_file = File::create(Path::new(&new_path)).unwrap();
     wav::write(
         Header::new(0x01, 2, sample_rate as u32, 16),
