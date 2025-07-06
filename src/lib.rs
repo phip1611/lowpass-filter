@@ -72,12 +72,13 @@ SOFTWARE.
 )]
 #![deny(missing_debug_implementations)]
 #![deny(rustdoc::all)]
+#![no_std]
 
 #[cfg_attr(test, macro_use)]
 #[cfg(test)]
 extern crate std;
 
-use std::ops::RangeInclusive;
+use core::ops::RangeInclusive;
 
 /// A single-order lowpass filter with single precision that consumes and emits
 /// items one by one.
