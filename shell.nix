@@ -16,6 +16,7 @@ pkgs.mkShell rec {
     with pkgs;
     [
       pkg-config
+      rustup
     ]
     ++ libs;
 

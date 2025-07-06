@@ -1,14 +1,22 @@
-# Rust: `no_std` digital low pass filter library
-This is a `no_std` Rust library for simple digital low pass filters. You can use it for example to
-get the low frequencies from a song.
+# lowpass-filter
+
+This is a `no_std` and `no_alloc` Rust library for simple digital low pass
+filters. You can use it, for example, to keep the low frequencies from a song
+for beat detection.
 
 ## Difference to `biquad`
-**⚠ TL;DR: Prefer crate `biquad` and use this crate only for educational purposes.** \
-This crate provides a basic and simple to understand, first order lowpass filter. The [biquad](https://crates.io/crates/biquad)
-crate offers second order filters, with higher accuracy. Due to my testing, a lowpass filter with `biquad` has the same
-computational costs as my crate, but offers a **better resolution for actually cutting of signals above the
-cut-off frequency while the preserved signal will be less attenuated**, compared to my filter implementation.
-For production, please use `biquad`.
+
+**⚠ TL;DR: `biquad` might be a better option in some use-cases.** \
+
+This crate provides a basic and simple to understand, first order lowpass
+filter. The [biquad](https://crates.io/crates/biquad) crate offers second order
+filters, with higher accuracy. From my testing, a lowpass filter created with
+`biquad` has higher computational costs as this crate, but offers a
+**better resolution for actually cutting of signals above the cut-off frequency
+while the preserved signal will be less attenuated**.
+
+So for production use-cases, please also consider using `biquad`. You can run
+benchmark and check your data (e.g., by plotting) to make that decision.
 
 ## How to use
 ```rust
@@ -34,3 +42,6 @@ fn main() {
 ![Example 1: Lowpassed Waveform of a song](res/song_waveform_lowpassed.png "Example 1: Lowpassed Original Waveform of a song")
 ### #2: 3x Lowpassed Waveform
 ![Example 1: Lowpassed Waveform of a song 3x](res/song_waveform_lowpassed_3x.png "Example 1: Lowpassed Original Waveform of a song 3 times")
+
+# MSRV
+The MSRV is `1.85.0`.

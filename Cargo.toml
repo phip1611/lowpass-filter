@@ -1,34 +1,35 @@
 [package]
 name = "lowpass-filter"
 description = """
-This is a `no_std` Rust library for simple digital low pass filters. You can use it for example to
-get the low frequencies from a song.
+Simple first-order digital lowpass filters, compatible with `no_std`. You can
+use it, for example, to get the low frequencies from a song.
 """
-version = "0.3.3"
+version = "0.4.0"
 authors = ["Philipp Schuster <phip1611@gmail.com>"]
-edition = "2021"
+edition = "2024"
 keywords = ["audio", "filter", "digital", "lowpass", "dsp"]
-categories = ["multimedia", "no-std"]
+categories = ["multimedia", "no-std", "no-std::no-alloc"]
 readme = "README.md"
 license = "MIT"
 homepage = "https://github.com/phip1611/lowpass-filter"
 repository = "https://github.com/phip1611/lowpass-filter"
 documentation = "https://docs.rs/lowpass-filter/"
+rust-version = "1.85"
 exclude = [
-    ".github",
-    "test",
-    "res"
+  ".github",
+  "test",
+  "res"
 ]
 
 [dependencies]
 
 [dev-dependencies]
-audio-visualizer = "0.4" # to visualize the output
-minimp3 = "0.5" # to test this filter
-wav = "=1.0.0" # store was wav
-spectrum-analyzer = { version = "1.6" }
-biquad = "=0.4"
+audio-visualizer = "0.5" # to visualize the output
+hound = "3.5.1"
+itertools = "0.14.0"
+spectrum-analyzer = { version = "1.7", default-features = false, features = [] }
 
-# debug bins will be faster
+
+# tests, bins, and examples will run faster
 [profile.dev]
 opt-level = 1

@@ -1,5 +1,5 @@
 use audio_visualizer::dynamic::live_input::AudioDevAndCfg;
-use audio_visualizer::dynamic::window_top_btm::{open_window_connect_audio, TransformFn};
+use audio_visualizer::dynamic::window_top_btm::{TransformFn, open_window_connect_audio};
 use lowpass_filter::lowpass_filter;
 
 /// Example that creates a live visualization of realtime audio data

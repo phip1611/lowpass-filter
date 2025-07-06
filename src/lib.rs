@@ -21,28 +21,45 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! This is a `no_std` Rust library for simple digital low pass filters. You can use it for
-//! example to get the low frequencies from a song.
+//! Simple first-order digital lowpass filters, compatible with `no_std`. You
+//! can use it, for example, to get the low frequencies from a song.
 //!
-//! **⚠ Prefer crate `biquad` and use this crate only for educational purposes.**
+//! ## Difference to `biquad`
+//!
+//! **⚠ TL;DR: `biquad` might be a better option in some use-cases.** \
+//!
+//! This crate provides a basic and simple to understand, first order lowpass
+//! filter. The [biquad](https://crates.io/crates/biquad) crate offers second order
+//! filters, with higher accuracy. From my testing, a lowpass filter created with
+//! `biquad` has higher computational costs as this crate, but offers a
+//! **better resolution for actually cutting of signals above the cut-off frequency
+//! while the preserved signal will be less attenuated**.
+//!
+//! So for production use-cases, please also consider using `biquad`. You can run
+//! benchmark and check your data (e.g., by plotting) to make that decision.
+//!
+//! ## Usage
+//!
+//! You can either use the [`LowpassFilter`] type to integrate the filter in
+//! iterator chains or you can use a convenient function such as
+//! [`lowpass_filter`] and [`lowpass_filter_f64`]. The first approach is more
+//! flexible.
 //!
 //! # Example
-//! ```ignore
+//! ```rust,no_run
 //! use lowpass_filter::lowpass_filter;
 //!
-//! /// Minimal example how to use this crate/how to apply low pass filter.
-//! fn main() {
-//!     // read this from MP3 for example
-//!     let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
-//!     // mutates the input buffer
-//!     lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
-//! }
+//! // some samples
+//! let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
+//! // mutates the input buffer
+//! lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
 //! ```
 
 #![deny(
     clippy::all,
     clippy::cargo,
     clippy::nursery,
+    clippy::must_use_candidate,
     // clippy::restriction,
     // clippy::pedantic
 )]
@@ -55,49 +72,125 @@ SOFTWARE.
 )]
 #![deny(missing_debug_implementations)]
 #![deny(rustdoc::all)]
-// use std in tests
-#![cfg_attr(not(test), no_std)]
-
-// use alloc crate, because this is no_std
-extern crate alloc;
 
 #[cfg_attr(test, macro_use)]
 #[cfg(test)]
 extern crate std;
 
-/// Applies a single-order lowpass filter with single precisioun to the data provided in the mutable buffer.
-pub fn lowpass_filter(data: &mut [f32], sampling_rate: f32, cutoff_frequency: f32) {
-    // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-    let rc = 1.0 / (cutoff_frequency * 2.0 * core::f32::consts::PI);
-    // time per sample
-    let dt = 1.0 / sampling_rate;
-    let alpha = dt / (rc + dt);
+/// A single-order lowpass filter with single precision that consumes and emits
+/// items one by one.
+///
+/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP.
+///
+/// # More Info
+/// - <https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter>
+#[derive(Debug, Clone)]
+pub struct LowpassFilter<T> {
+    alpha: T,
+    prev: T,
+    next_is_first: bool,
+}
 
-    data[0] *= alpha;
-    for i in 1..data.len() {
-        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
+macro_rules! impl_lowpass_filter {
+    ($t:ty, $pi:expr) => {
+        impl LowpassFilter<$t> {
+            /// Create a new lowpass filter.
+            ///
+            /// # Arguments
+            /// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
+            /// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+            #[must_use]
+            pub fn new(sample_rate_hz: $t, cutoff_frequency_hz: $t) -> Self {
+                // Nyquist rule
+                assert!(cutoff_frequency_hz * 2.0 <= sample_rate_hz);
 
-        // we don't need a copy of the original data, because the original data is accessed
-        // before it is overwritten: data[i] = ... data[i]
-        data[i] = data[i - 1] + alpha * (data[i] - data[i - 1]);
+                let rc = 1.0 / (cutoff_frequency_hz * 2.0 * $pi);
+                let dt = 1.0 / sample_rate_hz;
+                let alpha = dt / (rc + dt);
+
+                Self {
+                    alpha,
+                    prev: 0.0,
+                    next_is_first: true,
+                }
+            }
+
+            /// Filter a single sample and return the filtered result.
+            ///
+            /// It is recommended to operate on f32 values in range
+            /// `-1.0..=1.0`, which is also the default in DSP.
+            #[inline]
+            pub fn run(&mut self, input: $t) -> $t {
+                if self.next_is_first {
+                    self.next_is_first = false;
+                    self.prev = input;
+                    input * self.alpha
+                } else {
+                    self.prev = self.prev + self.alpha * (input - self.prev);
+                    self.prev
+                }
+            }
+
+            /// Reset the internal filter state.
+            pub const fn reset(&mut self) {
+                self.prev = 0.0;
+                self.next_is_first = true;
+            }
+        }
+    };
+}
+
+impl_lowpass_filter!(f32, core::f32::consts::PI);
+impl_lowpass_filter!(f64, core::f64::consts::PI);
+
+/// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
+/// changes the items in-place.
+///
+/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP.
+///
+/// # Arguments
+/// - `sample_iter`: Iterator over the samples. This can also be a
+///   `[1.0, ...]`-style slice
+/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
+/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+#[inline]
+pub fn lowpass_filter<'a, I: IntoIterator<Item = &'a mut f32>>(
+    sample_iter: I,
+    sample_rate_hz: f32,
+    cutoff_frequency_hz: f32,
+) {
+    let mut filter = LowpassFilter::<f32>::new(sample_rate_hz, cutoff_frequency_hz);
+
+    for sample in sample_iter.into_iter() {
+        let new_sample = filter.run(*sample);
+        *sample = new_sample;
     }
 }
 
-/// Applies a single-order lowpass filter with double precision to the data provided in the mutable buffer.
-pub fn lowpass_filter_f64(data: &mut [f64], sampling_rate: f64, cutoff_frequency: f64) {
-    // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-    let rc = 1.0 / (cutoff_frequency * 2.0 * core::f64::consts::PI);
-    // time per sample
-    let dt = 1.0 / sampling_rate;
-    let alpha = dt / (rc + dt);
+/// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
+/// changes the items in-place.
+///
+/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP.
+///
+/// # Arguments
+/// - `sample_iter`: Iterator over the samples. This can also be a
+///   `[1.0, ...]`-style slice
+/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
+/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+#[inline]
+pub fn lowpass_filter_f64<'a, I: IntoIterator<Item = &'a mut f64>>(
+    sample_iter: I,
+    sample_rate_hz: f64,
+    cutoff_frequency_hz: f64,
+) {
+    let mut filter = LowpassFilter::<f64>::new(sample_rate_hz, cutoff_frequency_hz);
 
-    data[0] *= alpha;
-    for i in 1..data.len() {
-        // https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter
-
-        // we don't need a copy of the original data, because the original data is accessed
-        // before it is overwritten: data[i] = ... data[i]
-        data[i] = data[i - 1] + alpha * (data[i] - data[i - 1]);
+    for sample in sample_iter.into_iter() {
+        let new_sample = filter.run(*sample);
+        *sample = new_sample;
     }
 }
 
@@ -107,11 +200,9 @@ mod test_util;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{calculate_power, sine_wave_samples, TEST_OUT_DIR};
-    use audio_visualizer::waveform::plotters_png_file::waveform_static_plotters_png_visualize;
+    use crate::test_util::{calculate_power, sine_wave_samples, target_dir_test_artifacts};
     use audio_visualizer::Channels;
-    use biquad::{Biquad, Coefficients, DirectForm1, ToHertz, Type, Q_BUTTERWORTH_F64};
-    use std::time::Instant;
+    use audio_visualizer::waveform::plotters_png_file::waveform_static_plotters_png_visualize;
     use std::vec::Vec;
 
     #[test]
@@ -122,13 +213,13 @@ mod tests {
         waveform_static_plotters_png_visualize(
             &samples_l_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
             Channels::Mono,
-            TEST_OUT_DIR,
+            target_dir_test_artifacts().to_str().unwrap(),
             "test_lpf_l_orig.png",
         );
         waveform_static_plotters_png_visualize(
             &samples_h_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
             Channels::Mono,
-            TEST_OUT_DIR,
+            target_dir_test_artifacts().to_str().unwrap(),
             "test_lpf_h_orig.png",
         );
 
@@ -150,7 +241,7 @@ mod tests {
                 .map(|x| *x as i16)
                 .collect::<Vec<_>>(),
             Channels::Mono,
-            TEST_OUT_DIR,
+            target_dir_test_artifacts().to_str().unwrap(),
             "test_lpf_l_after.png",
         );
         waveform_static_plotters_png_visualize(
@@ -159,7 +250,7 @@ mod tests {
                 .map(|x| *x as i16)
                 .collect::<Vec<_>>(),
             Channels::Mono,
-            TEST_OUT_DIR,
+            target_dir_test_artifacts().to_str().unwrap(),
             "test_lpf_h_after.png",
         );
 
@@ -188,50 +279,6 @@ mod tests {
             calculate_power(&lowpassed_f32.iter().map(|x| *x as f64).collect::<Vec<_>>());
         let power_f64 = calculate_power(&lowpassed_f64);
 
-        assert!((power_f32 as f64 - power_f64).abs() <= 0.00024);
-    }
-
-    #[ignore]
-    #[test]
-    fn test_lowpass_filter_vs_biquad() {
-        let samples_orig = sine_wave_samples(350.0, 44100.0);
-        let mut samples = samples_orig.clone();
-
-        let now = Instant::now();
-        for _ in 0..1000 {
-            lowpass_filter_f64(samples.as_mut_slice(), 44100.0, 90.0);
-        }
-        let duration_lowpass_filter = now.elapsed().as_secs_f64() / 1000.0;
-
-        let duration_biquad = {
-            let f0 = 80.hz();
-            let fs = 44.1.khz();
-
-            // Create coefficients for the biquads
-            let coeffs =
-                Coefficients::<f64>::from_params(Type::LowPass, fs, f0, Q_BUTTERWORTH_F64).unwrap();
-            let mut lowpassed_data = Vec::with_capacity(samples_orig.len());
-            let mut biquad_lpf = DirectForm1::<f64>::new(coeffs);
-
-            let now = Instant::now();
-            for _ in 0..1000 {
-                samples_orig
-                    .iter()
-                    .for_each(|val| lowpassed_data.push(biquad_lpf.run(*val)));
-            }
-
-            let _x = core::hint::black_box(lowpassed_data);
-
-            now.elapsed().as_secs_f64() / 1000.0
-        };
-
-        println!(
-            "lowpass filter on average: {}µs",
-            duration_lowpass_filter * 1_000_000.0
-        );
-        println!(
-            "biquad filter on average : {}µs",
-            duration_biquad * 1_000_000.0
-        );
+        assert!((power_f32 - power_f64).abs() <= 0.00024);
     }
 }
