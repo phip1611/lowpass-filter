@@ -152,7 +152,7 @@ pub fn sine_wave_samples(fr: f64, sampling_rate: f64) -> Vec<f64> {
     (0..(2 * sampling_rate as usize))
         .map(|x| x as f64)
         .map(|t| t / sampling_rate)
-        .map(|t| sine_wave(t) * i16::MAX as f64)
+        .map(|t| sine_wave(t))
         .collect::<Vec<_>>()
 }
 

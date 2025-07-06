@@ -77,10 +77,12 @@ SOFTWARE.
 #[cfg(test)]
 extern crate std;
 
+use std::ops::RangeInclusive;
+
 /// A single-order lowpass filter with single precision that consumes and emits
 /// items one by one.
 ///
-/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
 /// also the default in DSP.
 ///
 /// # More Info
@@ -118,18 +120,29 @@ macro_rules! impl_lowpass_filter {
 
             /// Filter a single sample and return the filtered result.
             ///
-            /// It is recommended to operate on f32 values in range
-            /// `-1.0..=1.0`, which is also the default in DSP.
+            /// It is mandatory to operate on f32 values in range
+            /// `-1.0..=1.0`, which is also the default in DSP. The returned
+            /// value is also guaranteed to be in that range.
             #[inline]
             pub fn run(&mut self, input: $t) -> $t {
-                if self.next_is_first {
+                const RANGE: RangeInclusive<$t> = -1.0..=1.0;
+                debug_assert!(
+                    RANGE.contains(&input),
+                    "samples must be in range {RANGE:?}: {input}"
+                );
+
+                let value = if self.next_is_first {
                     self.next_is_first = false;
                     self.prev = input;
                     input * self.alpha
                 } else {
                     self.prev = self.prev + self.alpha * (input - self.prev);
                     self.prev
-                }
+                };
+
+                // very small deviations caused by floating point operations
+                // are tolerable; just truncate the value
+                value.clamp(-1.0, 1.0)
             }
 
             /// Reset the internal filter state.
@@ -147,7 +160,7 @@ impl_lowpass_filter!(f64, core::f64::consts::PI);
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
 ///
-/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
 /// also the default in DSP.
 ///
 /// # Arguments
@@ -172,7 +185,7 @@ pub fn lowpass_filter<'a, I: IntoIterator<Item = &'a mut f32>>(
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
 ///
-/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
 /// also the default in DSP.
 ///
 /// # Arguments
