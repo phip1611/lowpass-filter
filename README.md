@@ -17,17 +17,25 @@ while the preserved signal will be less attenuated**.
 So for production use-cases, please also consider using `biquad`. You can run
 benchmark and check your data (e.g., by plotting) to make that decision.
 
-## How to use
-```rust
+## Usage
+
+You can either use the `LowpassFilter` type to integrate the filter in
+iterator chains or you can use a convenient function such as
+`lowpass_filter` and `lowpass_filter_f64`. The first approach is more
+flexible.
+
+### Example with `LowpassFilter` type
+
+See implementation of `lowpass_filter` function.
+
+### Example with `lowpass_filter` function
+```rust,no_run
 use lowpass_filter::lowpass_filter;
 
-/// Minimal example how to use this crate/how to apply low pass filter.
-fn main() {
-    // read this from MP3 for example
-    let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
-    // mutates the input buffer
-    lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
-}
+// some samples
+let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
+// mutates the input buffer
+lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
 ```
 
 ## Visual Examples

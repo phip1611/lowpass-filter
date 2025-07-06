@@ -45,7 +45,11 @@ SOFTWARE.
 //! [`lowpass_filter`] and [`lowpass_filter_f64`]. The first approach is more
 //! flexible.
 //!
-//! # Example
+//! ### Example with `LowpassFilter` type
+//!
+//! See implementation of [`lowpass_filter`].
+//!
+//! ### Example with `lowpass_filter` function
 //! ```rust,no_run
 //! use lowpass_filter::lowpass_filter;
 //!

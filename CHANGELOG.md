@@ -1,5 +1,8 @@
 # Changelog for `lowpass-filter`
 
+## v0.4.1 (2025-07-06)
+- doc updates
+
 ## v0.4.0 (2025-07-06)
 - modernized crate, Rust edition 2024
 - Added new `LowpassFilter` type that makes it easier to use this crate
