@@ -1,12 +1,11 @@
 # lowpass-filter
 
-This is a `no_std` and `no_alloc` Rust library for simple digital low pass
-filters. You can use it, for example, to keep the low frequencies from a song
-for beat detection.
+Simple first-order digital lowpass filters, compatible with `no_std`. You can
+use it, for example, to get the low frequencies from a song.
 
 ## Difference to `biquad`
 
-**⚠ TL;DR: `biquad` might be a better option in some use-cases.** \
+**⚠ TL;DR: `biquad` might be a better option in some use-cases.**
 
 This crate provides a basic and simple to understand, first order lowpass
 filter. The [biquad](https://crates.io/crates/biquad) crate offers second order
