@@ -26,7 +26,7 @@ SOFTWARE.
 //!
 //! ## Difference to `biquad`
 //!
-//! **⚠ TL;DR: `biquad` might be a better option in some use-cases.** 
+//! **⚠ TL;DR: `biquad` might be a better option in some use-cases.**
 //!
 //! This crate provides a basic and simple to understand, first order lowpass
 //! filter. The [biquad](https://crates.io/crates/biquad) crate offers second order
