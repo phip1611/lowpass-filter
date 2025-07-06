@@ -77,7 +77,7 @@ fn main() {
             .expect("Path has no file name")
             .to_str()
             .unwrap();
-        let new_filename = format!("{}_processed.wav", stem);
+        let new_filename = format!("{stem}_processed.wav");
         parent.join(new_filename)
     };
 

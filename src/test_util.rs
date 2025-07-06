@@ -120,13 +120,14 @@ pub fn f32_sample_to_i16(val: f32) -> i16 {
 /// Returns the cargo target dir.
 pub fn target_dir() -> PathBuf {
     // 1. Check if CARGO_TARGET_DIR is set
-    if let Ok(dir) = std::env::var("CARGO_TARGET_DIR") {
-        PathBuf::from(dir)
-    } else {
+    std::env::var("CARGO_TARGET_DIR").map_or_else(
         // 2. Fall back to default: go up from CARGO_MANIFEST_DIR
-        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        manifest_dir.join("target")
-    }
+        |_| {
+            let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            manifest_dir.join("target")
+        },
+        PathBuf::from,
+    )
 }
 /// Returns a directory within the cargo target dir to store test artifacts.
 pub fn target_dir_test_artifacts() -> PathBuf {
@@ -152,7 +153,7 @@ pub fn sine_wave_samples(fr: f64, sampling_rate: f64) -> Vec<f64> {
     (0..(2 * sampling_rate as usize))
         .map(|x| x as f64)
         .map(|t| t / sampling_rate)
-        .map(|t| sine_wave(t))
+        .map(sine_wave)
         .collect::<Vec<_>>()
 }
 
