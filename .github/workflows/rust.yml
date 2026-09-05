@@ -20,8 +20,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          components: rustfmt, clippy
+          toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
       # required because of "audio-visualizer"
       - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev libfontconfig-dev -y

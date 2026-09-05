@@ -5,7 +5,7 @@ High performance no_std lowpass filter for digital signal processing. A
 simple first-order digital filter with a SIMD-accelerated slice API, no
 dependencies, no unsafe code, and no allocations.
 """
-version = "0.4.1"
+version = "0.5.0"
 authors = ["Philipp Schuster <phip1611@gmail.com>"]
 edition = "2024"
 keywords = ["audio", "filter", "digital", "lowpass", "dsp"]
@@ -15,12 +15,15 @@ license = "MIT"
 homepage = "https://github.com/phip1611/lowpass-filter"
 repository = "https://github.com/phip1611/lowpass-filter"
 documentation = "https://docs.rs/lowpass-filter/"
-# bound by `slice::as_chunks_mut`
 rust-version = "1.88"
 exclude = [
-  ".github",
-  "test",
-  "res"
+  ".cargo/",
+  ".github/",
+  "flake.lock",
+  "flake.nix",
+  "res/",
+  "shell.nix",
+  "test/",
 ]
 
 [dependencies]
