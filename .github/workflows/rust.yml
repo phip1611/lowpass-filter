@@ -28,6 +28,8 @@ jobs:
       - name: test regular build
         run: cargo build --all-targets
       - run: cargo test
+      - name: benchmark smoke test (runs each bench once, no measurement)
+        run: cargo bench -- --test
       - name: install some no_std target
         run: rustup target add thumbv7em-none-eabihf
       - name: test no_std build
