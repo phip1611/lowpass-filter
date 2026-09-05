@@ -95,6 +95,8 @@ use core::ops::RangeInclusive;
 #[derive(Debug, Clone)]
 pub struct LowpassFilter<T> {
     alpha: T,
+    /// Precomputed `1 - alpha`.
+    beta: T,
     prev: T,
     next_is_first: bool,
 }
@@ -118,6 +120,7 @@ macro_rules! impl_lowpass_filter {
 
                 Self {
                     alpha,
+                    beta: 1.0 - alpha,
                     prev: 0.0,
                     next_is_first: true,
                 }
@@ -141,7 +144,8 @@ macro_rules! impl_lowpass_filter {
                     self.prev = input;
                     input * self.alpha
                 } else {
-                    self.prev = self.prev + self.alpha * (input - self.prev);
+                    // Re-associated form of `prev + alpha * (input - prev)`:
+                    self.prev = self.alpha * input + self.beta * self.prev;
                     self.prev
                 };
 

@@ -1,5 +1,8 @@
 # Changelog for `lowpass-filter`
 
+## v0.5.0 (2026-09-05)
+- Improved performance/throughput by ~50%
+
 ## v0.4.1 (2025-07-06)
 - doc updates
 
