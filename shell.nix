@@ -6,9 +6,9 @@ let
   libs = with pkgs; [
     alsa-lib
     fontconfig
+    libX11
+    libXcursor
     libxkbcommon
-    xorg.libXcursor
-    xorg.libX11
   ];
 in
 pkgs.mkShell rec {
