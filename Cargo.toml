@@ -25,8 +25,8 @@ exclude = [
 
 [dev-dependencies]
 audio-visualizer = "0.5" # to visualize the output
-hound = "3.5.1"
-itertools = "0.15.0"
+hound = "3.5"
+itertools = "0.15"
 spectrum-analyzer = { version = "1.7", default-features = false, features = [] }
 
 
