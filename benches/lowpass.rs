@@ -1,5 +1,7 @@
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
-use lowpass_filter::{lowpass_filter, lowpass_filter_f64};
+use lowpass_filter::{
+    lowpass_filter, lowpass_filter_f64, lowpass_filter_slice, lowpass_filter_slice_f64,
+};
 use std::hint::black_box;
 
 const SAMPLE_RATE_HZ: f64 = 44100.0;
@@ -31,6 +33,20 @@ fn benchmark(c: &mut Criterion) {
         b.iter_batched_ref(
             || samples_f64.clone(),
             |samples| lowpass_filter_f64(black_box(samples.as_mut_slice()), 44100.0, 120.0),
+            BatchSize::LargeInput,
+        )
+    });
+    group.bench_function("f32 slice", |b| {
+        b.iter_batched_ref(
+            || samples_f32.clone(),
+            |samples| lowpass_filter_slice(black_box(samples.as_mut_slice()), 44100.0, 120.0),
+            BatchSize::LargeInput,
+        )
+    });
+    group.bench_function("f64 slice", |b| {
+        b.iter_batched_ref(
+            || samples_f64.clone(),
+            |samples| lowpass_filter_slice_f64(black_box(samples.as_mut_slice()), 44100.0, 120.0),
             BatchSize::LargeInput,
         )
     });

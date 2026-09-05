@@ -1,7 +1,15 @@
 # Changelog for `lowpass-filter`
 
-## v0.5.0 (2026-09-05)
-- Improved performance/throughput by ~50%
+## Unreleased
+- Significantly improved performance. Compared to the previous release,
+  expect roughly 1.5x throughput from the existing iterator-based API and
+  roughly 3-5x from the new slice-based API (measured on x86_64; exact
+  factors vary with CPU and compiler flags).
+- Added `LowpassFilter::run_slice`, `lowpass_filter_slice`, and
+  `lowpass_filter_slice_f64`: filter whole slices with a block-based
+  algorithm that compilers can auto-vectorize (SIMD). Results match the
+  per-sample API up to tiny floating point rounding differences
+  (roughly `1e-6` for `f32`).
 
 ## v0.4.1 (2025-07-06)
 - doc updates
