@@ -155,11 +155,13 @@ impl Sample for f64 {
     }
 }
 
-/// A single-order lowpass filter with single precision that consumes and emits
-/// items one by one.
+/// A first-order lowpass filter compatible with `f32` and `f64`.
 ///
-/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It can consume and filter items one-by-one (iterator-style API) or operate
+/// on slices ([`LowpassFilter::run_slice`]).
+///
+/// It is mandatory to operate on values in range `-1.0..=1.0`, which is also
+/// the default in DSP.
 ///
 /// # More Info
 /// - <https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter>
@@ -197,9 +199,9 @@ impl<T: Sample> LowpassFilter<T> {
 
     /// Filter a single sample and return the filtered result.
     ///
-    /// It is mandatory to operate on f32 values in range
-    /// `-1.0..=1.0`, which is also the default in DSP. The returned
-    /// value is also guaranteed to be in that range.
+    /// It is mandatory to operate on values in range `-1.0..=1.0`, which is
+    /// also the default in DSP. The returned value is also guaranteed to be in
+    /// that range.
     #[inline]
     pub fn run(&mut self, input: T) -> T {
         let range: RangeInclusive<T> = -T::ONE..=T::ONE;
@@ -347,7 +349,7 @@ pub fn lowpass_filter<'a, I: IntoIterator<Item = &'a mut f32>>(
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
 ///
-/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
+/// It is mandatory to operate on f64 values in range `-1.0..=1.0`, which is
 /// also the default in DSP.
 ///
 /// # Arguments
@@ -474,7 +476,6 @@ mod tests {
         assert!(power_h_lowpassed < power_h_orig);
         assert!(power_l_lowpassed < power_l_orig);
 
-        assert!(power_h_lowpassed <= 3.0 * power_h_lowpassed);
         assert!(
             power_h_lowpassed * 3.0 <= power_l_lowpassed,
             "LPF must actively remove frequencies above threshold"
