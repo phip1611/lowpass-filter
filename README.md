@@ -46,6 +46,18 @@ let filtered = filter.run(0.25);
 The iterator-based `lowpass_filter` and `lowpass_filter_f64` functions are
 convenient when the samples do not live in a slice.
 
+## Comparison with `biquad`
+
+For the equivalent first-order lowpass (`Type::SinglePoleLowPass`), this
+crate outperforms the [biquad](https://crates.io/crates/biquad) crate:
+roughly 1.5x throughput with the iterator-based API and 5-6x with the
+slice-based API (x86_64), as `biquad` processes samples strictly one at a
+time.
+
+`biquad` is the better choice for sharp frequency separation or other
+filter types (highpass, bandpass, notch, EQ): its second-order filters
+roll off at 12 dB/octave instead of 6, with a configurable Q factor.
+
 ## Visual Examples
 ### #1: Original Waveform of a short sample
 ![Example 1: Original Waveform of a short sample](res/sample1_waveform.png "Example 1: Original Waveform of a short sample")
