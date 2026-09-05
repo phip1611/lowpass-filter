@@ -21,47 +21,51 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-//! Simple first-order digital lowpass filters, compatible with `no_std`. You can
-//! use it, for example, to get the low frequencies from a song.
+//! High performance `no_std` lowpass filter for digital signal processing.
 //!
-//! ## Difference to `biquad`
+//! This crate implements a simple first-order digital lowpass filter for
+//! `f32` and `f64` samples. Use it, for example, to extract the bass from a
+//! song or to smooth noisy sensor data. It has no dependencies, no `unsafe`
+//! code, and performs no allocations, making it suitable for any target from
+//! desktop to embedded.
 //!
-//! **⚠ TL;DR: `biquad` might be a better option in some use-cases.**
-//!
-//! This crate provides a basic and simple to understand, first order lowpass
-//! filter. The [biquad](https://crates.io/crates/biquad) crate offers second order
-//! filters, with higher accuracy. From my testing, a lowpass filter created with
-//! `biquad` has higher computational costs as this crate, but offers a
-//! **better resolution for actually cutting of signals above the cut-off frequency
-//! while the preserved signal will be less attenuated**.
-//!
-//! So for production use-cases, please also consider using `biquad`. You can run
-//! benchmark and check your data (e.g., by plotting) to make that decision.
+//! Samples must be in range `-1.0..=1.0`, which is the default in DSP.
 //!
 //! ## Usage
 //!
-//! You can either use the [`LowpassFilter`] type to integrate the filter in
-//! iterator chains or you can use a convenient function such as
-//! [`lowpass_filter`] and [`lowpass_filter_f64`]. The first approach is more
-//! flexible.
+//! To filter a buffer of samples in one go, use [`lowpass_filter_slice`]
+//! (or [`lowpass_filter_slice_f64`]). This is the fastest option: it
+//! processes samples in blocks that compilers auto-vectorize (SIMD),
+//! several times faster than per-sample processing.
 //!
-//! When all samples are available in a slice, prefer the block-processing
-//! variants [`lowpass_filter_slice`], [`lowpass_filter_slice_f64`], and
-//! [`LowpassFilter::run_slice`] for significantly higher throughput.
+//! ```rust
+//! use lowpass_filter::lowpass_filter_slice;
 //!
-//! ### Example with `LowpassFilter` type
-//!
-//! See implementation of [`lowpass_filter`].
-//!
-//! ### Example with `lowpass_filter` function
-//! ```rust,no_run
-//! use lowpass_filter::lowpass_filter;
-//!
-//! // some samples
-//! let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
-//! // mutates the input buffer
-//! lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
+//! // Mono audio samples, recorded at 44.1 kHz sample rate.
+//! let mut samples = [0.0, 0.3, -0.6, 0.8, 0.5, -0.2];
+//! // Only keep frequencies below 120 Hz; mutates the buffer in-place.
+//! lowpass_filter_slice(&mut samples, 44100.0, 120.0);
 //! ```
+//!
+//! For streaming data, e.g. in an audio callback, keep a [`LowpassFilter`]
+//! around: its state carries over between calls, so chunked processing
+//! equals processing everything at once. It also filters single samples,
+//! e.g. inside iterator chains.
+//!
+//! ```rust
+//! use lowpass_filter::LowpassFilter;
+//!
+//! let mut filter = LowpassFilter::<f32>::new(44100.0, 120.0);
+//! // Process data as it arrives (fast block processing) ...
+//! for mut chunk in [[0.0, 0.3, -0.6, 0.8], [0.5, -0.2, 0.1, 0.4]] {
+//!     filter.run_slice(&mut chunk);
+//! }
+//! // ... or one sample at a time.
+//! let filtered = filter.run(0.25);
+//! ```
+//!
+//! The iterator-based [`lowpass_filter`] and [`lowpass_filter_f64`]
+//! functions are convenient when the samples do not live in a slice.
 
 #![deny(
     clippy::all,
