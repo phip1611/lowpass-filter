@@ -15,6 +15,7 @@
   macro-generated per-type implementations. This also improved slice
   throughput further, as monomorphization now happens in the consuming
   crate with its target flags.
+- MSRV is now 1.88.0 (required by `slice::as_chunks_mut`)
 
 ## v0.4.1 (2025-07-06)
 - doc updates

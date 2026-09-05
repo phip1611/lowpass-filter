@@ -286,8 +286,8 @@ impl<T: Sample> LowpassFilter<T> {
 
         // Hot loop. `acc[i]` accumulates y[i] of the current block.
         // Its shape helps the compilers auto-vectorizer.
-        let mut chunks = samples.chunks_exact_mut(LANES);
-        for chunk in &mut chunks {
+        let (chunks, remainder) = samples.as_chunks_mut::<LANES>();
+        for chunk in chunks {
             let mut acc = [T::ZERO; LANES];
             // acc[i] = sum(cols[j][i] * x[j] for all j)
             for (col, &sample) in cols.iter().zip(chunk.iter()) {
@@ -307,7 +307,7 @@ impl<T: Sample> LowpassFilter<T> {
             }
         }
         // Process the up to LANES - 1 leftover samples sequentially.
-        for sample in chunks.into_remainder() {
+        for sample in remainder {
             *sample = self.run(*sample);
         }
     }
