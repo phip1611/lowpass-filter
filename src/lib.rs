@@ -45,6 +45,10 @@ SOFTWARE.
 //! [`lowpass_filter`] and [`lowpass_filter_f64`]. The first approach is more
 //! flexible.
 //!
+//! When all samples are available in a slice, prefer the block-processing
+//! variants [`lowpass_filter_slice`], [`lowpass_filter_slice_f64`], and
+//! [`LowpassFilter::run_slice`] for significantly higher throughput.
+//!
 //! ### Example with `LowpassFilter` type
 //!
 //! See implementation of [`lowpass_filter`].
@@ -102,7 +106,7 @@ pub struct LowpassFilter<T> {
 }
 
 macro_rules! impl_lowpass_filter {
-    ($t:ty, $pi:expr) => {
+    ($t:ty, $pi:expr, $lanes:expr) => {
         impl LowpassFilter<$t> {
             /// Create a new lowpass filter.
             ///
@@ -154,6 +158,95 @@ macro_rules! impl_lowpass_filter {
                 value.clamp(-1.0, 1.0)
             }
 
+            /// Filter a whole slice of samples in-place.
+            ///
+            /// Matches calling [`Self::run`] per sample up to tiny floating
+            /// point rounding differences (roughly `1e-6` for `f32`), but
+            /// is significantly faster. The filter state is updated, so
+            /// consecutive calls compose, also when mixed with
+            /// [`Self::run`].
+            ///
+            /// # Math
+            /// Unrolling `y[n] = alpha * x[n] + beta * y[n-1]` over a block
+            /// of samples yields
+            ///
+            /// ```text
+            /// y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+            /// ```
+            ///
+            /// so within a block, samples only depend on the state `prev`
+            /// from before the block and can be computed in parallel, which
+            /// enables compiler auto-vectorization (SIMD). Only `prev`
+            /// propagates serially between blocks.
+            ///
+            /// # Arguments
+            /// - `samples`: Samples to filter in-place, in range `-1.0..=1.0`.
+            pub fn run_slice(&mut self, samples: &mut [$t]) {
+                // Block size. 8 measured fastest on x86-64 for f32 and f64.
+                const LANES: usize = $lanes;
+
+                let mut samples = samples;
+                // The first sample is special-cased in `run`; handle it
+                // there so the block form below is uniform.
+                if self.next_is_first {
+                    if let Some((first, rest)) = samples.split_first_mut() {
+                        *first = self.run(*first);
+                        samples = rest;
+                    } else {
+                        return;
+                    }
+                }
+
+                // Coefficients of the closed block form (see doc comment):
+                //   y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+                // pow[k] = beta^k
+                let mut pow = [1.0; LANES];
+                for k in 1..LANES {
+                    pow[k] = pow[k - 1] * self.beta;
+                }
+                // carry_coeffs[i] = beta^(i+1), the weight of `prev` in y[i]
+                let carry_coeffs = pow.map(|p| p * self.beta);
+
+                // cols[j][i] = alpha * beta^(i-j): the weight of input x[j]
+                // in output y[i], stored as one "column" per input j so
+                // that the hot loop below can apply one sample to all
+                // outputs at once. Entries for i < j stay 0, as later
+                // inputs cannot affect earlier outputs.
+                let mut cols = [[0.0; LANES]; LANES];
+                for (j, col) in cols.iter_mut().enumerate() {
+                    for (i, weight) in col.iter_mut().enumerate().skip(j) {
+                        *weight = self.alpha * pow[i - j];
+                    }
+                }
+
+                // Hot loop. `acc[i]` accumulates y[i] of the current block.
+                // Its shape helps the compilers auto-vectorizer.
+                let mut chunks = samples.chunks_exact_mut(LANES);
+                for chunk in &mut chunks {
+                    let mut acc = [0.0; LANES];
+                    // acc[i] = sum(cols[j][i] * x[j] for all j)
+                    for (col, &sample) in cols.iter().zip(chunk.iter()) {
+                        for (acc, coeff) in acc.iter_mut().zip(col.iter()) {
+                            *acc += coeff * sample;
+                        }
+                    }
+                    // acc[i] += beta^(i+1) * prev; the only place where
+                    // state from before the block enters.
+                    for (acc, coeff) in acc.iter_mut().zip(carry_coeffs.iter()) {
+                        *acc += coeff * self.prev;
+                    }
+                    // like in `run`, `prev` keeps the unclamped value
+                    self.prev = acc[LANES - 1];
+                    for (sample, acc) in chunk.iter_mut().zip(acc.iter()) {
+                        *sample = acc.clamp(-1.0, 1.0);
+                    }
+                }
+                // Process the up to LANES - 1 leftover samples sequentially.
+                for sample in chunks.into_remainder() {
+                    *sample = self.run(*sample);
+                }
+            }
+
             /// Reset the internal filter state.
             pub const fn reset(&mut self) {
                 self.prev = 0.0;
@@ -163,8 +256,8 @@ macro_rules! impl_lowpass_filter {
     };
 }
 
-impl_lowpass_filter!(f32, core::f32::consts::PI);
-impl_lowpass_filter!(f64, core::f64::consts::PI);
+impl_lowpass_filter!(f32, core::f32::consts::PI, 8);
+impl_lowpass_filter!(f64, core::f64::consts::PI, 8);
 
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
@@ -214,6 +307,48 @@ pub fn lowpass_filter_f64<'a, I: IntoIterator<Item = &'a mut f64>>(
         let new_sample = filter.run(*sample);
         *sample = new_sample;
     }
+}
+
+/// Applies a [`LowpassFilter`] to the slice in-place via
+/// [`LowpassFilter::run_slice`].
+///
+/// Significantly faster than [`lowpass_filter`], with results equal up to
+/// tiny floating point rounding differences (roughly `1e-6`).
+///
+/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP.
+///
+/// # Arguments
+/// - `samples`: Samples to filter in-place.
+/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
+/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+#[inline]
+pub fn lowpass_filter_slice(samples: &mut [f32], sample_rate_hz: f32, cutoff_frequency_hz: f32) {
+    let mut filter = LowpassFilter::<f32>::new(sample_rate_hz, cutoff_frequency_hz);
+    filter.run_slice(samples);
+}
+
+/// Applies a [`LowpassFilter`] to the slice in-place via
+/// [`LowpassFilter::run_slice`].
+///
+/// Significantly faster than [`lowpass_filter_f64`], with results equal up
+/// to tiny floating point rounding differences.
+///
+/// It is mandatory to operate on f64 values in range `-1.0..=1.0`, which is
+/// also the default in DSP.
+///
+/// # Arguments
+/// - `samples`: Samples to filter in-place.
+/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
+/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+#[inline]
+pub fn lowpass_filter_slice_f64(
+    samples: &mut [f64],
+    sample_rate_hz: f64,
+    cutoff_frequency_hz: f64,
+) {
+    let mut filter = LowpassFilter::<f64>::new(sample_rate_hz, cutoff_frequency_hz);
+    filter.run_slice(samples);
 }
 
 #[cfg(test)]
@@ -284,6 +419,58 @@ mod tests {
             power_h_lowpassed * 3.0 <= power_l_lowpassed,
             "LPF must actively remove frequencies above threshold"
         );
+    }
+
+    /// Tests that the SIMD slice path produces the same results as the
+    /// per-sample path, including all tail lengths around the block size.
+    #[test]
+    fn test_run_slice_matches_run() {
+        for n in [0_usize, 1, 3, 7, 8, 9, 16, 17, 41, 1003] {
+            let samples_f64 = (0..n)
+                .map(|i| (i as f64 * 0.37).sin() * 0.9)
+                .collect::<Vec<_>>();
+            let samples_f32 = samples_f64.iter().map(|&x| x as f32).collect::<Vec<_>>();
+
+            let mut expected_f32 = samples_f32.clone();
+            let mut actual_f32 = samples_f32.clone();
+            lowpass_filter(expected_f32.as_mut_slice(), 44100.0, 120.0);
+            lowpass_filter_slice(actual_f32.as_mut_slice(), 44100.0, 120.0);
+            for (i, (e, a)) in expected_f32.iter().zip(&actual_f32).enumerate() {
+                assert!((e - a).abs() < 1e-5, "f32, n={n}, i={i}: {e} vs {a}");
+            }
+
+            let mut expected_f64 = samples_f64.clone();
+            let mut actual_f64 = samples_f64.clone();
+            lowpass_filter_f64(expected_f64.as_mut_slice(), 44100.0, 120.0);
+            lowpass_filter_slice_f64(actual_f64.as_mut_slice(), 44100.0, 120.0);
+            for (i, (e, a)) in expected_f64.iter().zip(&actual_f64).enumerate() {
+                assert!((e - a).abs() < 1e-12, "f64, n={n}, i={i}: {e} vs {a}");
+            }
+        }
+    }
+
+    /// Tests that the filter state carries over between `run_slice` calls,
+    /// so chunked processing equals processing everything at once.
+    #[test]
+    fn test_run_slice_chunked_equals_whole() {
+        let samples = (0..500)
+            .map(|i| (i as f32 * 0.37).sin() * 0.9)
+            .collect::<Vec<_>>();
+
+        let mut whole = samples.clone();
+        let mut filter = LowpassFilter::<f32>::new(44100.0, 120.0);
+        filter.run_slice(whole.as_mut_slice());
+
+        let mut chunked = samples;
+        let mut filter = LowpassFilter::<f32>::new(44100.0, 120.0);
+        // odd chunk size on purpose, so blocks span call boundaries
+        for chunk in chunked.chunks_mut(13) {
+            filter.run_slice(chunk);
+        }
+
+        for (i, (w, c)) in whole.iter().zip(&chunked).enumerate() {
+            assert!((w - c).abs() < 1e-5, "i={i}: {w} vs {c}");
+        }
     }
 
     /// Tests if the functions with f32 and f64 behave similar.
