@@ -86,7 +86,70 @@ SOFTWARE.
 #[cfg(test)]
 extern crate std;
 
-use core::ops::RangeInclusive;
+use core::fmt::{Debug, Display};
+use core::ops::{Add, AddAssign, Div, Mul, Neg, RangeInclusive, Sub};
+
+mod sealed {
+    /// Seals [`super::Sample`] so it cannot be implemented outside this
+    /// crate.
+    pub trait Sealed {}
+    impl Sealed for f32 {}
+    impl Sealed for f64 {}
+}
+
+/// A sample type [`LowpassFilter`] can operate on: [`f32`] or [`f64`].
+///
+/// This trait is sealed and cannot be implemented outside of this crate.
+pub trait Sample:
+    sealed::Sealed
+    + Copy
+    + PartialOrd
+    + Debug
+    + Display
+    + Add<Output = Self>
+    + AddAssign
+    + Sub<Output = Self>
+    + Mul<Output = Self>
+    + Div<Output = Self>
+    + Neg<Output = Self>
+{
+    /// `0.0`
+    const ZERO: Self;
+    /// `1.0`
+    const ONE: Self;
+    /// `2.0`
+    const TWO: Self;
+    /// Archimedes' constant (π).
+    const PI: Self;
+
+    /// See [`f32::clamp`].
+    #[must_use]
+    fn clamp(self, min: Self, max: Self) -> Self;
+}
+
+impl Sample for f32 {
+    const ZERO: Self = 0.0;
+    const ONE: Self = 1.0;
+    const TWO: Self = 2.0;
+    const PI: Self = core::f32::consts::PI;
+
+    #[inline]
+    fn clamp(self, min: Self, max: Self) -> Self {
+        Self::clamp(self, min, max)
+    }
+}
+
+impl Sample for f64 {
+    const ZERO: Self = 0.0;
+    const ONE: Self = 1.0;
+    const TWO: Self = 2.0;
+    const PI: Self = core::f64::consts::PI;
+
+    #[inline]
+    fn clamp(self, min: Self, max: Self) -> Self {
+        Self::clamp(self, min, max)
+    }
+}
 
 /// A single-order lowpass filter with single precision that consumes and emits
 /// items one by one.
@@ -105,159 +168,152 @@ pub struct LowpassFilter<T> {
     next_is_first: bool,
 }
 
-macro_rules! impl_lowpass_filter {
-    ($t:ty, $pi:expr, $lanes:expr) => {
-        impl LowpassFilter<$t> {
-            /// Create a new lowpass filter.
-            ///
-            /// # Arguments
-            /// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
-            /// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
-            #[must_use]
-            pub fn new(sample_rate_hz: $t, cutoff_frequency_hz: $t) -> Self {
-                // Nyquist rule
-                assert!(cutoff_frequency_hz * 2.0 <= sample_rate_hz);
+impl<T: Sample> LowpassFilter<T> {
+    /// Create a new lowpass filter.
+    ///
+    /// # Arguments
+    /// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
+    /// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+    #[must_use]
+    pub fn new(sample_rate_hz: T, cutoff_frequency_hz: T) -> Self {
+        // Nyquist rule
+        assert!(cutoff_frequency_hz * T::TWO <= sample_rate_hz);
 
-                let rc = 1.0 / (cutoff_frequency_hz * 2.0 * $pi);
-                let dt = 1.0 / sample_rate_hz;
-                let alpha = dt / (rc + dt);
+        let rc = T::ONE / (cutoff_frequency_hz * T::TWO * T::PI);
+        let dt = T::ONE / sample_rate_hz;
+        let alpha = dt / (rc + dt);
 
-                Self {
-                    alpha,
-                    beta: 1.0 - alpha,
-                    prev: 0.0,
-                    next_is_first: true,
-                }
-            }
+        Self {
+            alpha,
+            beta: T::ONE - alpha,
+            prev: T::ZERO,
+            next_is_first: true,
+        }
+    }
 
-            /// Filter a single sample and return the filtered result.
-            ///
-            /// It is mandatory to operate on f32 values in range
-            /// `-1.0..=1.0`, which is also the default in DSP. The returned
-            /// value is also guaranteed to be in that range.
-            #[inline]
-            pub fn run(&mut self, input: $t) -> $t {
-                const RANGE: RangeInclusive<$t> = -1.0..=1.0;
-                debug_assert!(
-                    RANGE.contains(&input),
-                    "samples must be in range {RANGE:?}: {input}"
-                );
+    /// Filter a single sample and return the filtered result.
+    ///
+    /// It is mandatory to operate on f32 values in range
+    /// `-1.0..=1.0`, which is also the default in DSP. The returned
+    /// value is also guaranteed to be in that range.
+    #[inline]
+    pub fn run(&mut self, input: T) -> T {
+        let range: RangeInclusive<T> = -T::ONE..=T::ONE;
+        debug_assert!(
+            range.contains(&input),
+            "samples must be in range {range:?}: {input}"
+        );
 
-                let value = if self.next_is_first {
-                    self.next_is_first = false;
-                    self.prev = input;
-                    input * self.alpha
-                } else {
-                    // Re-associated form of `prev + alpha * (input - prev)`:
-                    self.prev = self.alpha * input + self.beta * self.prev;
-                    self.prev
-                };
+        let value = if self.next_is_first {
+            self.next_is_first = false;
+            self.prev = input;
+            input * self.alpha
+        } else {
+            // Re-associated form of `prev + alpha * (input - prev)`:
+            self.prev = self.alpha * input + self.beta * self.prev;
+            self.prev
+        };
 
-                // very small deviations caused by floating point operations
-                // are tolerable; just truncate the value
-                value.clamp(-1.0, 1.0)
-            }
+        // very small deviations caused by floating point operations
+        // are tolerable; just truncate the value
+        value.clamp(-T::ONE, T::ONE)
+    }
 
-            /// Filter a whole slice of samples in-place.
-            ///
-            /// Matches calling [`Self::run`] per sample up to tiny floating
-            /// point rounding differences (roughly `1e-6` for `f32`), but
-            /// is significantly faster. The filter state is updated, so
-            /// consecutive calls compose, also when mixed with
-            /// [`Self::run`].
-            ///
-            /// # Math
-            /// Unrolling `y[n] = alpha * x[n] + beta * y[n-1]` over a block
-            /// of samples yields
-            ///
-            /// ```text
-            /// y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
-            /// ```
-            ///
-            /// so within a block, samples only depend on the state `prev`
-            /// from before the block and can be computed in parallel, which
-            /// enables compiler auto-vectorization (SIMD). Only `prev`
-            /// propagates serially between blocks.
-            ///
-            /// # Arguments
-            /// - `samples`: Samples to filter in-place, in range `-1.0..=1.0`.
-            pub fn run_slice(&mut self, samples: &mut [$t]) {
-                // Block size. 8 measured fastest on x86-64 for f32 and f64.
-                const LANES: usize = $lanes;
+    /// Filter a whole slice of samples in-place.
+    ///
+    /// Matches calling [`Self::run`] per sample up to tiny floating
+    /// point rounding differences (roughly `1e-6` for `f32`), but
+    /// is significantly faster. The filter state is updated, so
+    /// consecutive calls compose, also when mixed with
+    /// [`Self::run`].
+    ///
+    /// # Math
+    /// Unrolling `y[n] = alpha * x[n] + beta * y[n-1]` over a block
+    /// of samples yields
+    ///
+    /// ```text
+    /// y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+    /// ```
+    ///
+    /// so within a block, samples only depend on the state `prev`
+    /// from before the block and can be computed in parallel, which
+    /// enables compiler auto-vectorization (SIMD). Only `prev`
+    /// propagates serially between blocks.
+    ///
+    /// # Arguments
+    /// - `samples`: Samples to filter in-place, in range `-1.0..=1.0`.
+    pub fn run_slice(&mut self, samples: &mut [T]) {
+        // Block size. 8 measured fastest on x86-64 for f32 and f64.
+        const LANES: usize = 8;
 
-                let mut samples = samples;
-                // The first sample is special-cased in `run`; handle it
-                // there so the block form below is uniform.
-                if self.next_is_first {
-                    if let Some((first, rest)) = samples.split_first_mut() {
-                        *first = self.run(*first);
-                        samples = rest;
-                    } else {
-                        return;
-                    }
-                }
-
-                // Coefficients of the closed block form (see doc comment):
-                //   y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
-                // pow[k] = beta^k
-                let mut pow = [1.0; LANES];
-                for k in 1..LANES {
-                    pow[k] = pow[k - 1] * self.beta;
-                }
-                // carry_coeffs[i] = beta^(i+1), the weight of `prev` in y[i]
-                let carry_coeffs = pow.map(|p| p * self.beta);
-
-                // cols[j][i] = alpha * beta^(i-j): the weight of input x[j]
-                // in output y[i], stored as one "column" per input j so
-                // that the hot loop below can apply one sample to all
-                // outputs at once. Entries for i < j stay 0, as later
-                // inputs cannot affect earlier outputs.
-                let mut cols = [[0.0; LANES]; LANES];
-                for (j, col) in cols.iter_mut().enumerate() {
-                    for (i, weight) in col.iter_mut().enumerate().skip(j) {
-                        *weight = self.alpha * pow[i - j];
-                    }
-                }
-
-                // Hot loop. `acc[i]` accumulates y[i] of the current block.
-                // Its shape helps the compilers auto-vectorizer.
-                let mut chunks = samples.chunks_exact_mut(LANES);
-                for chunk in &mut chunks {
-                    let mut acc = [0.0; LANES];
-                    // acc[i] = sum(cols[j][i] * x[j] for all j)
-                    for (col, &sample) in cols.iter().zip(chunk.iter()) {
-                        for (acc, coeff) in acc.iter_mut().zip(col.iter()) {
-                            *acc += coeff * sample;
-                        }
-                    }
-                    // acc[i] += beta^(i+1) * prev; the only place where
-                    // state from before the block enters.
-                    for (acc, coeff) in acc.iter_mut().zip(carry_coeffs.iter()) {
-                        *acc += coeff * self.prev;
-                    }
-                    // like in `run`, `prev` keeps the unclamped value
-                    self.prev = acc[LANES - 1];
-                    for (sample, acc) in chunk.iter_mut().zip(acc.iter()) {
-                        *sample = acc.clamp(-1.0, 1.0);
-                    }
-                }
-                // Process the up to LANES - 1 leftover samples sequentially.
-                for sample in chunks.into_remainder() {
-                    *sample = self.run(*sample);
-                }
-            }
-
-            /// Reset the internal filter state.
-            pub const fn reset(&mut self) {
-                self.prev = 0.0;
-                self.next_is_first = true;
+        let mut samples = samples;
+        // The first sample is special-cased in `run`; handle it
+        // there so the block form below is uniform.
+        if self.next_is_first {
+            if let Some((first, rest)) = samples.split_first_mut() {
+                *first = self.run(*first);
+                samples = rest;
+            } else {
+                return;
             }
         }
-    };
-}
 
-impl_lowpass_filter!(f32, core::f32::consts::PI, 8);
-impl_lowpass_filter!(f64, core::f64::consts::PI, 8);
+        // Coefficients of the closed block form (see doc comment):
+        //   y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+        // pow[k] = beta^k
+        let mut pow = [T::ONE; LANES];
+        for k in 1..LANES {
+            pow[k] = pow[k - 1] * self.beta;
+        }
+        // carry_coeffs[i] = beta^(i+1), the weight of `prev` in y[i]
+        let carry_coeffs = pow.map(|p| p * self.beta);
+
+        // cols[j][i] = alpha * beta^(i-j): the weight of input x[j]
+        // in output y[i], stored as one "column" per input j so
+        // that the hot loop below can apply one sample to all
+        // outputs at once. Entries for i < j stay 0, as later
+        // inputs cannot affect earlier outputs.
+        let mut cols = [[T::ZERO; LANES]; LANES];
+        for (j, col) in cols.iter_mut().enumerate() {
+            for (i, weight) in col.iter_mut().enumerate().skip(j) {
+                *weight = self.alpha * pow[i - j];
+            }
+        }
+
+        // Hot loop. `acc[i]` accumulates y[i] of the current block.
+        // Its shape helps the compilers auto-vectorizer.
+        let mut chunks = samples.chunks_exact_mut(LANES);
+        for chunk in &mut chunks {
+            let mut acc = [T::ZERO; LANES];
+            // acc[i] = sum(cols[j][i] * x[j] for all j)
+            for (col, &sample) in cols.iter().zip(chunk.iter()) {
+                for (acc, &coeff) in acc.iter_mut().zip(col.iter()) {
+                    *acc += coeff * sample;
+                }
+            }
+            // acc[i] += beta^(i+1) * prev; the only place where
+            // state from before the block enters.
+            for (acc, &coeff) in acc.iter_mut().zip(carry_coeffs.iter()) {
+                *acc += coeff * self.prev;
+            }
+            // like in `run`, `prev` keeps the unclamped value
+            self.prev = acc[LANES - 1];
+            for (sample, acc) in chunk.iter_mut().zip(acc.iter()) {
+                *sample = acc.clamp(-T::ONE, T::ONE);
+            }
+        }
+        // Process the up to LANES - 1 leftover samples sequentially.
+        for sample in chunks.into_remainder() {
+            *sample = self.run(*sample);
+        }
+    }
+
+    /// Reset the internal filter state.
+    pub const fn reset(&mut self) {
+        self.prev = T::ZERO;
+        self.next_is_first = true;
+    }
+}
 
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.

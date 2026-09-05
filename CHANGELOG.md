@@ -10,6 +10,11 @@
   algorithm that compilers can auto-vectorize (SIMD). Results match the
   per-sample API up to tiny floating point rounding differences
   (roughly `1e-6` for `f32`).
+- `LowpassFilter` methods are now a generic implementation over the new
+  sealed `Sample` trait (implemented for `f32` and `f64`) instead of
+  macro-generated per-type implementations. This also improved slice
+  throughput further, as monomorphization now happens in the consuming
+  crate with its target flags.
 
 ## v0.4.1 (2025-07-06)
 - doc updates
