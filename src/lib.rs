@@ -379,8 +379,9 @@ mod test_util;
 mod tests {
     use super::*;
     use crate::test_util::{calculate_power, sine_wave_samples, target_dir_test_artifacts};
-    use std::vec::Vec;
     use audio_visualizer::WaveformVisualizer;
+    use std::iter;
+    use std::vec::Vec;
 
     #[test]
     fn test_lpf_and_visualize() {
@@ -442,6 +443,80 @@ mod tests {
         assert!(
             power_h_lowpassed * 3.0 <= power_l_lowpassed,
             "LPF must actively remove frequencies above threshold"
+        );
+    }
+
+    /// A lowpass filter lets low frequencies ("bass") pass and removes high
+    /// frequencies ("treble"). With a cutoff of 1000 Hz, a 100 Hz tone should
+    /// come out almost unchanged, while a 10000 Hz tone should mostly vanish.
+    #[test]
+    fn test_keeps_low_and_removes_high_frequencies() {
+        let sample_rate = 44100.0;
+        let cutoff = 1000.0;
+
+        // Loudness of a tone: its highest amplitude. The first 0.1 seconds
+        // are skipped, as the filter needs a moment to fade in.
+        let loudness = |samples: &[f32]| {
+            samples[4410..]
+                .iter()
+                .fold(0.0_f32, |max, &sample| max.max(sample.abs()))
+        };
+
+        let mut low_tone = sine_wave_samples(100.0, sample_rate);
+        let mut high_tone = sine_wave_samples(10000.0, sample_rate);
+        // Both tones start equally loud.
+        assert!(loudness(&low_tone) > 0.99);
+        assert!(loudness(&high_tone) > 0.99);
+
+        lowpass_filter_slice(&mut low_tone, sample_rate, cutoff);
+        lowpass_filter_slice(&mut high_tone, sample_rate, cutoff);
+
+        assert!(
+            loudness(&low_tone) > 0.9,
+            "low tone should pass almost unchanged: {}",
+            loudness(&low_tone)
+        );
+        assert!(
+            loudness(&high_tone) < 0.2,
+            "high tone should be mostly removed: {}",
+            loudness(&high_tone)
+        );
+    }
+
+    /// A lowpass filter smooths a signal: it cannot follow sudden changes
+    /// instantly. So when a signal starts abruptly, here jumping from silence
+    /// straight to a constant `1.0`, the output must fade in gradually. A
+    /// jump in the output would be audible as a "click".
+    ///
+    /// This is mostly relevant for the special handling of the very first
+    /// sample.
+    #[test]
+    fn test_abrupt_start_fades_in_without_click() {
+        let mut samples = [1.0_f32; 20];
+        lowpass_filter_slice(&mut samples, 44100.0, 1000.0);
+
+        // The filter starts from silence (0.0), so include it in the output.
+        let output = iter::once(0.0).chain(samples).collect::<Vec<_>>();
+        let steps = output
+            .windows(2)
+            .map(|pair| pair[1] - pair[0])
+            .collect::<Vec<_>>();
+
+        // Fade in: the output rises towards 1.0 with every sample ...
+        assert!(
+            steps.iter().all(|&step| step > 0.0),
+            "output should rise with every sample: {output:?}"
+        );
+        // ... and smoothly: each step is smaller than the previous one, so
+        // there is no sudden jump at any point.
+        assert!(
+            steps.windows(2).all(|pair| pair[1] < pair[0]),
+            "output should rise in ever smaller steps: {output:?}"
+        );
+        // ... without ever going beyond the input.
+        assert!(
+            samples.iter().all(|&sample| sample < 1.0),
+            "output should stay below the input: {output:?}"
         );
     }
 
