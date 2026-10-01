@@ -33,7 +33,7 @@ audio-visualizer = "0.5" # to visualize the output
 criterion = "0.8"
 hound = "3.5"
 itertools = "0.15"
-spectrum-analyzer = { version = "1.7", default-features = false, features = [] }
+spectrum-analyzer = { version = "2.0", default-features = false, features = [] }
 
 [[bench]]
 name = "lowpass"
