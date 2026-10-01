@@ -71,4 +71,5 @@ roll off at 12 dB/octave instead of 6, with a configurable Q factor.
 ![Example 1: Lowpassed Waveform of a song 3x](res/song_waveform_lowpassed_3x.png "Example 1: Lowpassed Original Waveform of a song 3 times")
 
 # MSRV
-The MSRV is `1.88.0`.
+The MSRV of the library is `1.88.0`. The MSRV of the benches, examples, and
+tests in this repository is `1.95.0`.

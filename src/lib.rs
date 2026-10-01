@@ -91,7 +91,7 @@ SOFTWARE.
 extern crate std;
 
 use core::fmt::{Debug, Display};
-use core::ops::{Add, AddAssign, Div, Mul, Neg, RangeInclusive, Sub};
+use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 mod sealed {
     /// Seals [`super::Sample`] so it cannot be implemented outside this
@@ -125,10 +125,6 @@ pub trait Sample:
     const TWO: Self;
     /// Archimedes' constant (π).
     const PI: Self;
-
-    /// See [`f32::clamp`].
-    #[must_use]
-    fn clamp(self, min: Self, max: Self) -> Self;
 }
 
 impl Sample for f32 {
@@ -136,11 +132,6 @@ impl Sample for f32 {
     const ONE: Self = 1.0;
     const TWO: Self = 2.0;
     const PI: Self = core::f32::consts::PI;
-
-    #[inline]
-    fn clamp(self, min: Self, max: Self) -> Self {
-        Self::clamp(self, min, max)
-    }
 }
 
 impl Sample for f64 {
@@ -148,12 +139,11 @@ impl Sample for f64 {
     const ONE: Self = 1.0;
     const TWO: Self = 2.0;
     const PI: Self = core::f64::consts::PI;
-
-    #[inline]
-    fn clamp(self, min: Self, max: Self) -> Self {
-        Self::clamp(self, min, max)
-    }
 }
+
+/// Block size for slice processing. 8 measured fastest on x86-64 for f32
+/// and f64.
+const LANES: usize = 8;
 
 /// A first-order lowpass filter compatible with `f32` and `f64`.
 ///
@@ -171,7 +161,8 @@ pub struct LowpassFilter<T> {
     /// Precomputed `1 - alpha`.
     beta: T,
     prev: T,
-    next_is_first: bool,
+    carry_coeffs: [T; LANES],
+    weights: [[T; LANES]; LANES],
 }
 
 impl<T: Sample> LowpassFilter<T> {
@@ -188,127 +179,122 @@ impl<T: Sample> LowpassFilter<T> {
         let rc = T::ONE / (cutoff_frequency_hz * T::TWO * T::PI);
         let dt = T::ONE / sample_rate_hz;
         let alpha = dt / (rc + dt);
+        let beta = T::ONE - alpha;
+        let (carry_coeffs, weights) = Self::precompute_slice_coefficients(alpha, beta);
 
         Self {
             alpha,
-            beta: T::ONE - alpha,
+            beta,
             prev: T::ZERO,
-            next_is_first: true,
+            carry_coeffs,
+            weights,
         }
+    }
+
+    /// Precomputes the coefficients for the slice processing.
+    fn precompute_slice_coefficients(alpha: T, beta: T) -> ([T; LANES], [[T; LANES]; LANES]) {
+        // Coefficients of the closed block form:
+        //
+        //   y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+        // pow[k] = beta^k
+        //
+        // # Math
+        // Unrolling `y[n] = alpha * x[n] + beta * y[n-1]` over a block of
+        // samples yields
+        //
+        // y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+        //
+        // so within a block, samples only depend on the state `prev` from
+        // before the block and can be computed in parallel, which enables
+        // compiler auto-vectorization (SIMD). Only `prev` propagates serially
+        // between blocks.
+        let mut pow_coeffs = [T::ONE; LANES];
+        for k in 1..LANES {
+            pow_coeffs[k] = pow_coeffs[k - 1] * beta;
+        }
+        // carry_coeffs[i] = beta^(i+1), the weight of `prev` in y[i]
+        let carry_coeffs = pow_coeffs.map(|p| p * beta);
+
+        // cols[j][i] = alpha * beta^(i-j): the weight of input x[j] in output
+        // y[i], stored as one "column" per input j so that the hot loop can
+        // apply one sample to all outputs at once. Entries for i < j stay 0,
+        // as later inputs cannot affect earlier outputs.
+        //
+        // In a nutshell: these are the constant factors of the filter formula
+        // expanded over LANES samples. They only depend on alpha and beta, so
+        // they can be computed once per filter instead of once per call.
+        let mut weights = [[T::ZERO; LANES]; LANES];
+        for (j, col) in weights.iter_mut().enumerate() {
+            for (i, weight) in col.iter_mut().enumerate().skip(j) {
+                *weight = alpha * pow_coeffs[i - j];
+            }
+        }
+
+        (carry_coeffs, weights)
     }
 
     /// Filter a single sample and return the filtered result.
     ///
-    /// It is mandatory to operate on values in range `-1.0..=1.0`, which is
-    /// also the default in DSP. The returned value is also guaranteed to be in
-    /// that range.
+    /// It is recommended to operate on values in range `-1.0..=1.0`, which is
+    /// also the default in DSP. All values must be finite, i.e., not NaN or
+    /// infinite.
     #[inline]
+    #[must_use]
     pub fn run(&mut self, input: T) -> T {
-        let range: RangeInclusive<T> = -T::ONE..=T::ONE;
-        debug_assert!(
-            range.contains(&input),
-            "samples must be in range {range:?}: {input}"
-        );
-
-        let value = if self.next_is_first {
-            self.next_is_first = false;
-            self.prev = input;
-            input * self.alpha
-        } else {
-            // Re-associated form of `prev + alpha * (input - prev)`:
-            self.prev = self.alpha * input + self.beta * self.prev;
-            self.prev
-        };
-
-        // very small deviations caused by floating point operations
-        // are tolerable; just truncate the value
-        value.clamp(-T::ONE, T::ONE)
+        // Re-associated form of `prev + alpha * (input - prev)`:
+        //
+        // On the very first iteration, the second part is zero and `input`
+        // is only influences by `alpha`.
+        self.prev = self.alpha * input + self.beta * self.prev;
+        self.prev
     }
 
     /// Filter a whole slice of samples in-place.
     ///
-    /// Matches calling [`Self::run`] per sample up to tiny floating
-    /// point rounding differences (roughly `1e-6` for `f32`), but
-    /// is significantly faster. The filter state is updated, so
-    /// consecutive calls compose, also when mixed with
-    /// [`Self::run`].
+    /// Matches calling [`Self::run`] per sample up to tiny floating point
+    /// rounding differences (roughly `1e-6` for `f32`), but is significantly
+    /// faster. The filter state is updated, so consecutive calls compose, also
+    /// when mixed with [`Self::run`].
     ///
-    /// # Math
-    /// Unrolling `y[n] = alpha * x[n] + beta * y[n-1]` over a block
-    /// of samples yields
-    ///
-    /// ```text
-    /// y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
-    /// ```
-    ///
-    /// so within a block, samples only depend on the state `prev`
-    /// from before the block and can be computed in parallel, which
-    /// enables compiler auto-vectorization (SIMD). Only `prev`
-    /// propagates serially between blocks.
+    /// It is recommended to operate on values in range `-1.0..=1.0`, which is
+    /// also the default in DSP. All values must be finite, i.e., not NaN or
+    /// infinite.
     ///
     /// # Arguments
-    /// - `samples`: Samples to filter in-place, in range `-1.0..=1.0`.
+    /// - `samples`: Samples to filter in-place, preferably in range
+    ///   `-1.0..=1.0`.
+    #[inline]
     pub fn run_slice(&mut self, samples: &mut [T]) {
-        // Block size. 8 measured fastest on x86-64 for f32 and f64.
-        const LANES: usize = 8;
-
-        let mut samples = samples;
-        // The first sample is special-cased in `run`; handle it
-        // there so the block form below is uniform.
-        if self.next_is_first {
-            if let Some((first, rest)) = samples.split_first_mut() {
-                *first = self.run(*first);
-                samples = rest;
-            } else {
-                return;
-            }
-        }
-
-        // Coefficients of the closed block form (see doc comment):
-        //   y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
-        // pow[k] = beta^k
-        let mut pow = [T::ONE; LANES];
-        for k in 1..LANES {
-            pow[k] = pow[k - 1] * self.beta;
-        }
-        // carry_coeffs[i] = beta^(i+1), the weight of `prev` in y[i]
-        let carry_coeffs = pow.map(|p| p * self.beta);
-
-        // cols[j][i] = alpha * beta^(i-j): the weight of input x[j]
-        // in output y[i], stored as one "column" per input j so
-        // that the hot loop below can apply one sample to all
-        // outputs at once. Entries for i < j stay 0, as later
-        // inputs cannot affect earlier outputs.
-        let mut cols = [[T::ZERO; LANES]; LANES];
-        for (j, col) in cols.iter_mut().enumerate() {
-            for (i, weight) in col.iter_mut().enumerate().skip(j) {
-                *weight = self.alpha * pow[i - j];
-            }
+        if samples.is_empty() {
+            return;
         }
 
         // Hot loop. `acc[i]` accumulates y[i] of the current block.
         // Its shape helps the compilers auto-vectorizer.
         let (chunks, remainder) = samples.as_chunks_mut::<LANES>();
+
+        // Fast path for chunks using the precomputed coefficients.
         for chunk in chunks {
             let mut acc = [T::ZERO; LANES];
-            // acc[i] = sum(cols[j][i] * x[j] for all j)
-            for (col, &sample) in cols.iter().zip(chunk.iter()) {
+            // acc[i] = sum(weights[j][i] * x[j] for all j)
+            for (col, &sample) in self.weights.iter().zip(chunk.iter()) {
                 for (acc, &coeff) in acc.iter_mut().zip(col.iter()) {
                     *acc += coeff * sample;
                 }
             }
-            // acc[i] += beta^(i+1) * prev; the only place where
-            // state from before the block enters.
-            for (acc, &coeff) in acc.iter_mut().zip(carry_coeffs.iter()) {
+            // acc[i] += beta^(i+1) * prev; the only place where state from
+            // before the block enters.
+            for (acc, &coeff) in acc.iter_mut().zip(self.carry_coeffs.iter()) {
                 *acc += coeff * self.prev;
             }
-            // like in `run`, `prev` keeps the unclamped value
+
             self.prev = acc[LANES - 1];
             for (sample, acc) in chunk.iter_mut().zip(acc.iter()) {
-                *sample = acc.clamp(-T::ONE, T::ONE);
+                *sample = *acc;
             }
         }
-        // Process the up to LANES - 1 leftover samples sequentially.
+
+        // Process the tail (the leftover samples) sequentially.
         for sample in remainder {
             *sample = self.run(*sample);
         }
@@ -317,15 +303,15 @@ impl<T: Sample> LowpassFilter<T> {
     /// Reset the internal filter state.
     pub const fn reset(&mut self) {
         self.prev = T::ZERO;
-        self.next_is_first = true;
     }
 }
 
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
 ///
-/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `sample_iter`: Iterator over the samples. This can also be a
@@ -349,8 +335,9 @@ pub fn lowpass_filter<'a, I: IntoIterator<Item = &'a mut f32>>(
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
 ///
-/// It is mandatory to operate on f64 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f64 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `sample_iter`: Iterator over the samples. This can also be a
@@ -375,10 +362,14 @@ pub fn lowpass_filter_f64<'a, I: IntoIterator<Item = &'a mut f64>>(
 /// [`LowpassFilter::run_slice`].
 ///
 /// Significantly faster than [`lowpass_filter`], with results equal up to
-/// tiny floating point rounding differences (roughly `1e-6`).
+/// tiny floating point rounding differences (roughly `1e-6`). Use this
+/// **only in oneshot mode**. In streaming mode, for performance reasons, it is
+/// recommended to create the filter once and invoke
+/// [`LowpassFilter::run_slice()`] multiple times.
 ///
-/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `samples`: Samples to filter in-place.
@@ -393,11 +384,15 @@ pub fn lowpass_filter_slice(samples: &mut [f32], sample_rate_hz: f32, cutoff_fre
 /// Applies a [`LowpassFilter`] to the slice in-place via
 /// [`LowpassFilter::run_slice`].
 ///
-/// Significantly faster than [`lowpass_filter_f64`], with results equal up
-/// to tiny floating point rounding differences.
+/// Significantly faster than [`lowpass_filter_f64`], with results equal up to
+/// tiny floating point rounding differences (roughly `1e-6`). Use this
+/// **only in oneshot mode**. In streaming mode, for performance reasons, it is
+/// recommended to create the filter once and invoke
+/// [`LowpassFilter::run_slice()`] multiple times.
 ///
-/// It is mandatory to operate on f64 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f64 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `samples`: Samples to filter in-place.
@@ -420,27 +415,34 @@ mod test_util;
 mod tests {
     use super::*;
     use crate::test_util::{calculate_power, sine_wave_samples, target_dir_test_artifacts};
-    use audio_visualizer::Channels;
-    use audio_visualizer::waveform::plotters_png_file::waveform_static_plotters_png_visualize;
+    use audio_visualizer::WaveformVisualizer;
+    use std::iter;
     use std::vec::Vec;
 
     #[test]
     fn test_lpf_and_visualize() {
-        let samples_l_orig = sine_wave_samples(120.0, 44100.0);
-        let samples_h_orig = sine_wave_samples(350.0, 44100.0);
+        let sampling_rate = 100.0;
+        let cutoff_fr = 10.0;
+        let samples_l_orig = sine_wave_samples(15.0, sampling_rate);
+        let samples_h_orig = sine_wave_samples(40.0, sampling_rate);
 
-        waveform_static_plotters_png_visualize(
-            &samples_l_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_l_orig.png",
-        );
-        waveform_static_plotters_png_visualize(
-            &samples_h_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_h_orig.png",
-        );
+        WaveformVisualizer::new(&samples_l_orig)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_l_orig.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
+
+        WaveformVisualizer::new(&samples_h_orig)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_h_orig.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
 
         let mut samples_l_lowpassed = samples_l_orig.clone();
         let mut samples_h_lowpassed = samples_h_orig.clone();
@@ -448,30 +450,29 @@ mod tests {
         let power_l_orig = calculate_power(&samples_l_orig);
         let power_h_orig = calculate_power(&samples_h_orig);
 
-        lowpass_filter_f64(samples_l_lowpassed.as_mut_slice(), 44100.0, 90.0);
-        lowpass_filter_f64(samples_h_lowpassed.as_mut_slice(), 44100.0, 90.0);
+        lowpass_filter_slice(&mut samples_l_lowpassed, sampling_rate, cutoff_fr);
+        lowpass_filter_slice(&mut samples_h_lowpassed, sampling_rate, cutoff_fr);
 
         let power_l_lowpassed = calculate_power(&samples_l_lowpassed);
         let power_h_lowpassed = calculate_power(&samples_h_lowpassed);
 
-        waveform_static_plotters_png_visualize(
-            &samples_l_lowpassed
-                .iter()
-                .map(|x| *x as i16)
-                .collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_l_after.png",
-        );
-        waveform_static_plotters_png_visualize(
-            &samples_h_lowpassed
-                .iter()
-                .map(|x| *x as i16)
-                .collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_h_after.png",
-        );
+        WaveformVisualizer::new(&samples_l_lowpassed)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_l_after.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
+
+        WaveformVisualizer::new(&samples_h_lowpassed)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_h_after.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
 
         assert!(power_h_lowpassed < power_h_orig);
         assert!(power_l_lowpassed < power_l_orig);
@@ -479,6 +480,80 @@ mod tests {
         assert!(
             power_h_lowpassed * 3.0 <= power_l_lowpassed,
             "LPF must actively remove frequencies above threshold"
+        );
+    }
+
+    /// A lowpass filter lets low frequencies ("bass") pass and removes high
+    /// frequencies ("treble"). With a cutoff of 1000 Hz, a 100 Hz tone should
+    /// come out almost unchanged, while a 10000 Hz tone should mostly vanish.
+    #[test]
+    fn test_keeps_low_and_removes_high_frequencies() {
+        let sample_rate = 44100.0;
+        let cutoff = 1000.0;
+
+        // Loudness of a tone: its highest amplitude. The first 0.1 seconds
+        // are skipped, as the filter needs a moment to fade in.
+        let loudness = |samples: &[f32]| {
+            samples[4410..]
+                .iter()
+                .fold(0.0_f32, |max, &sample| max.max(sample.abs()))
+        };
+
+        let mut low_tone = sine_wave_samples(100.0, sample_rate);
+        let mut high_tone = sine_wave_samples(10000.0, sample_rate);
+        // Both tones start equally loud.
+        assert!(loudness(&low_tone) > 0.99);
+        assert!(loudness(&high_tone) > 0.99);
+
+        lowpass_filter_slice(&mut low_tone, sample_rate, cutoff);
+        lowpass_filter_slice(&mut high_tone, sample_rate, cutoff);
+
+        assert!(
+            loudness(&low_tone) > 0.9,
+            "low tone should pass almost unchanged: {}",
+            loudness(&low_tone)
+        );
+        assert!(
+            loudness(&high_tone) < 0.2,
+            "high tone should be mostly removed: {}",
+            loudness(&high_tone)
+        );
+    }
+
+    /// A lowpass filter smooths a signal: it cannot follow sudden changes
+    /// instantly. So when a signal starts abruptly, here jumping from silence
+    /// straight to a constant `1.0`, the output must fade in gradually. A
+    /// jump in the output would be audible as a "click".
+    ///
+    /// This is mostly relevant for the special handling of the very first
+    /// sample.
+    #[test]
+    fn test_abrupt_start_fades_in_without_click() {
+        let mut samples = [1.0_f32; 20];
+        lowpass_filter_slice(&mut samples, 44100.0, 1000.0);
+
+        // The filter starts from silence (0.0), so include it in the output.
+        let output = iter::once(0.0).chain(samples).collect::<Vec<_>>();
+        let steps = output
+            .windows(2)
+            .map(|pair| pair[1] - pair[0])
+            .collect::<Vec<_>>();
+
+        // Fade in: the output rises towards 1.0 with every sample ...
+        assert!(
+            steps.iter().all(|&step| step > 0.0),
+            "output should rise with every sample: {output:?}"
+        );
+        // ... and smoothly: each step is smaller than the previous one, so
+        // there is no sudden jump at any point.
+        assert!(
+            steps.windows(2).all(|pair| pair[1] < pair[0]),
+            "output should rise in ever smaller steps: {output:?}"
+        );
+        // ... without ever going beyond the input.
+        assert!(
+            samples.iter().all(|&sample| sample < 1.0),
+            "output should stay below the input: {output:?}"
         );
     }
 
@@ -537,17 +612,18 @@ mod tests {
     /// Tests if the functions with f32 and f64 behave similar.
     #[test]
     fn test_lpf_f32_f64() {
-        let samples_h_orig = sine_wave_samples(350.0, 44100.0);
-        let mut lowpassed_f32 = samples_h_orig.iter().map(|x| *x as f32).collect::<Vec<_>>();
-        #[allow(clippy::redundant_clone)]
-        let mut lowpassed_f64 = samples_h_orig.clone();
+        let sampling_rate = 44100.0;
 
-        lowpass_filter(lowpassed_f32.as_mut_slice(), 44100.0, 90.0);
-        lowpass_filter_f64(lowpassed_f64.as_mut_slice(), 44100.0, 90.0);
+        let samples_h_orig = sine_wave_samples(350.0, sampling_rate);
+        let mut lowpassed_f32 = samples_h_orig.clone();
+        let mut lowpassed_f64 = samples_h_orig.iter().map(|x| *x as f64).collect::<Vec<_>>();
 
-        let power_f32 =
-            calculate_power(&lowpassed_f32.iter().map(|x| *x as f64).collect::<Vec<_>>());
-        let power_f64 = calculate_power(&lowpassed_f64);
+        lowpass_filter(&mut lowpassed_f32, sampling_rate, 90.0);
+        lowpass_filter_f64(&mut lowpassed_f64, sampling_rate as f64, 90.0);
+
+        let power_f32 = calculate_power(&lowpassed_f32);
+        let power_f64 =
+            calculate_power(&lowpassed_f64.iter().map(|x| *x as f32).collect::<Vec<_>>());
 
         assert!((power_f32 - power_f64).abs() <= 0.00024);
     }

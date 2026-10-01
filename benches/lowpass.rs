@@ -1,6 +1,7 @@
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use lowpass_filter::{
-    lowpass_filter, lowpass_filter_f64, lowpass_filter_slice, lowpass_filter_slice_f64,
+    LowpassFilter, lowpass_filter, lowpass_filter_f64, lowpass_filter_slice,
+    lowpass_filter_slice_f64,
 };
 use std::hint::black_box;
 
@@ -11,6 +12,8 @@ const SAMPLE_COUNT: usize = SAMPLE_RATE_HZ as usize;
 const FREQUENCY_HZ: f64 = 70.0;
 /// Amplitude of the generated sine wave, keeping samples in `-1.0..=1.0`.
 const AMPLITUDE: f64 = 0.8;
+/// Typical buffer size of a real-time audio callback.
+const STREAM_BUFFER_SIZE: usize = 64;
 
 fn benchmark(c: &mut Criterion) {
     // Generate a sine wave
@@ -43,10 +46,36 @@ fn benchmark(c: &mut Criterion) {
             BatchSize::LargeInput,
         )
     });
+    // common case, filter is reused across many small audio buffers
+    group.bench_function("f32 slice (streaming)", |b| {
+        let mut filter = LowpassFilter::<f32>::new(44100.0, 120.0);
+        b.iter_batched_ref(
+            || samples_f32.clone(),
+            |samples| {
+                for buffer in black_box(samples.as_mut_slice()).chunks_mut(STREAM_BUFFER_SIZE) {
+                    filter.run_slice(buffer);
+                }
+            },
+            BatchSize::LargeInput,
+        )
+    });
     group.bench_function("f64 slice", |b| {
         b.iter_batched_ref(
             || samples_f64.clone(),
             |samples| lowpass_filter_slice_f64(black_box(samples.as_mut_slice()), 44100.0, 120.0),
+            BatchSize::LargeInput,
+        )
+    });
+    // common case, filter is reused across many small audio buffers
+    group.bench_function("f64 slice (streaming)", |b| {
+        let mut filter = LowpassFilter::<f64>::new(44100.0, 120.0);
+        b.iter_batched_ref(
+            || samples_f64.clone(),
+            |samples| {
+                for buffer in black_box(samples.as_mut_slice()).chunks_mut(STREAM_BUFFER_SIZE) {
+                    filter.run_slice(buffer);
+                }
+            },
             BatchSize::LargeInput,
         )
     });

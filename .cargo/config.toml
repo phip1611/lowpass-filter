@@ -1,0 +1,6 @@
+[build]
+# Only for local execution, not bundled in the crate: Needed in the benches
+# for "wide" to take effect.
+rustflags = [
+  "-C", "target-cpu=native",
+]

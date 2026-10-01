@@ -26,7 +26,7 @@ SOFTWARE.
 
 use hound::{SampleFormat, WavSpec};
 use itertools::Itertools;
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
@@ -142,26 +142,26 @@ pub fn target_dir_test_artifacts() -> PathBuf {
     path
 }
 
-pub fn sine_wave(fr: f64) -> impl Fn(f64) -> f64 {
+pub fn sine_wave(fr: f32) -> impl Fn(f32) -> f32 {
     move |time| (2.0 * PI * fr * time).sin()
 }
 
 /// Creates a two second long audio snippet from the given frequency.
-pub fn sine_wave_samples(fr: f64, sampling_rate: f64) -> Vec<f64> {
+pub fn sine_wave_samples(fr: f32, sampling_rate: f32) -> Vec<f32> {
     let sine_wave = sine_wave(fr);
-    // 2 seconds long
-    (0..(2 * sampling_rate as usize))
-        .map(|x| x as f64)
+    let seconds = 1;
+    (0..(seconds * sampling_rate as usize))
+        .map(|x| x as f32)
         .map(|t| t / sampling_rate)
         .map(sine_wave)
         .collect::<Vec<_>>()
 }
 
-pub fn calculate_power(samples: &[f64]) -> f64 {
+pub fn calculate_power(samples: &[f32]) -> f32 {
     samples
         .iter()
         .copied()
-        .map(|x| x / i16::MAX as f64)
+        .map(|x| x / i16::MAX as f32)
         .map(|x| x * x)
         .fold(0.0, |acc, val| acc + val)
 }

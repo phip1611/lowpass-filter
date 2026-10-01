@@ -7,14 +7,31 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Just build the lib (MSRV is lower than the one for examples etc)
+  build_lib:
+    name: Build Library (MSRV)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0 # MSRV
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build
+      - name: install some no_std target
+        run: rustup target add thumbv7em-none-eabihf
+      - name: test no_std build
+        run: cargo build --target thumbv7em-none-eabihf # test no_std-build
   build:
+    name: Build All Targets
     runs-on: ubuntu-latest
     strategy:
       matrix:
         rust:
+          - 1.95.0 # MSRV of examples, benches, etc
           - stable
           - nightly
-          - 1.88.0 # MSRV
     steps:
       - uses: actions/checkout@v7
       - name: Setup Rust toolchain
@@ -24,15 +41,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # required because of "audio-visualizer"
       - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev libfontconfig-dev -y
-      - name: test regular build
-        run: cargo build --all-targets
+      - run: cargo build --all-targets
       - run: cargo test
       - name: benchmark smoke test (runs each bench once, no measurement)
         run: cargo bench -- --test
-      - name: install some no_std target
-        run: rustup target add thumbv7em-none-eabihf
-      - name: test no_std build
-        run: cargo build --target thumbv7em-none-eabihf # test no_std-build
 
   style_checks:
     runs-on: ubuntu-latest
