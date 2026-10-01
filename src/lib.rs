@@ -141,6 +141,10 @@ impl Sample for f64 {
     const PI: Self = core::f64::consts::PI;
 }
 
+/// Block size for slice processing. 8 measured fastest on x86-64 for f32
+/// and f64.
+const LANES: usize = 8;
+
 /// A first-order lowpass filter compatible with `f32` and `f64`.
 ///
 /// It can consume and filter items one-by-one (iterator-style API) or operate
@@ -157,6 +161,8 @@ pub struct LowpassFilter<T> {
     /// Precomputed `1 - alpha`.
     beta: T,
     prev: T,
+    carry_coeffs: [T; LANES],
+    weights: [[T; LANES]; LANES],
 }
 
 impl<T: Sample> LowpassFilter<T> {
@@ -173,12 +179,58 @@ impl<T: Sample> LowpassFilter<T> {
         let rc = T::ONE / (cutoff_frequency_hz * T::TWO * T::PI);
         let dt = T::ONE / sample_rate_hz;
         let alpha = dt / (rc + dt);
+        let beta = T::ONE - alpha;
+        let (carry_coeffs, weights) = Self::precompute_slice_coefficients(alpha, beta);
 
         Self {
             alpha,
-            beta: T::ONE - alpha,
+            beta,
             prev: T::ZERO,
+            carry_coeffs,
+            weights,
         }
+    }
+
+    /// Precomputes the coefficients for the slice processing.
+    fn precompute_slice_coefficients(alpha: T, beta: T) -> ([T; LANES], [[T; LANES]; LANES]) {
+        // Coefficients of the closed block form:
+        //
+        //   y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+        // pow[k] = beta^k
+        //
+        // # Math
+        // Unrolling `y[n] = alpha * x[n] + beta * y[n-1]` over a block of
+        // samples yields
+        //
+        // y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
+        //
+        // so within a block, samples only depend on the state `prev` from
+        // before the block and can be computed in parallel, which enables
+        // compiler auto-vectorization (SIMD). Only `prev` propagates serially
+        // between blocks.
+        let mut pow_coeffs = [T::ONE; LANES];
+        for k in 1..LANES {
+            pow_coeffs[k] = pow_coeffs[k - 1] * beta;
+        }
+        // carry_coeffs[i] = beta^(i+1), the weight of `prev` in y[i]
+        let carry_coeffs = pow_coeffs.map(|p| p * beta);
+
+        // cols[j][i] = alpha * beta^(i-j): the weight of input x[j] in output
+        // y[i], stored as one "column" per input j so that the hot loop can
+        // apply one sample to all outputs at once. Entries for i < j stay 0,
+        // as later inputs cannot affect earlier outputs.
+        //
+        // In a nutshell: these are the constant factors of the filter formula
+        // expanded over LANES samples. They only depend on alpha and beta, so
+        // they can be computed once per filter instead of once per call.
+        let mut weights = [[T::ZERO; LANES]; LANES];
+        for (j, col) in weights.iter_mut().enumerate() {
+            for (i, weight) in col.iter_mut().enumerate().skip(j) {
+                *weight = alpha * pow_coeffs[i - j];
+            }
+        }
+
+        (carry_coeffs, weights)
     }
 
     /// Filter a single sample and return the filtered result.
@@ -213,49 +265,26 @@ impl<T: Sample> LowpassFilter<T> {
     ///   `-1.0..=1.0`.
     #[inline]
     pub fn run_slice(&mut self, samples: &mut [T]) {
-        // Block size. 8 measured fastest on x86-64 for f32 and f64.
-        const LANES: usize = 8;
-
         if samples.is_empty() {
             return;
-        }
-
-        // Coefficients of the closed block form (see doc comment):
-        //   y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
-        // pow[k] = beta^k
-        let mut pow = [T::ONE; LANES];
-        for k in 1..LANES {
-            pow[k] = pow[k - 1] * self.beta;
-        }
-        // carry_coeffs[i] = beta^(i+1), the weight of `prev` in y[i]
-        let carry_coeffs = pow.map(|p| p * self.beta);
-
-        // cols[j][i] = alpha * beta^(i-j): the weight of input x[j]
-        // in output y[i], stored as one "column" per input j so
-        // that the hot loop below can apply one sample to all
-        // outputs at once. Entries for i < j stay 0, as later
-        // inputs cannot affect earlier outputs.
-        let mut cols = [[T::ZERO; LANES]; LANES];
-        for (j, col) in cols.iter_mut().enumerate() {
-            for (i, weight) in col.iter_mut().enumerate().skip(j) {
-                *weight = self.alpha * pow[i - j];
-            }
         }
 
         // Hot loop. `acc[i]` accumulates y[i] of the current block.
         // Its shape helps the compilers auto-vectorizer.
         let (chunks, remainder) = samples.as_chunks_mut::<LANES>();
+
+        // Fast path for chunks using the precomputed coefficients.
         for chunk in chunks {
             let mut acc = [T::ZERO; LANES];
-            // acc[i] = sum(cols[j][i] * x[j] for all j)
-            for (col, &sample) in cols.iter().zip(chunk.iter()) {
+            // acc[i] = sum(weights[j][i] * x[j] for all j)
+            for (col, &sample) in self.weights.iter().zip(chunk.iter()) {
                 for (acc, &coeff) in acc.iter_mut().zip(col.iter()) {
                     *acc += coeff * sample;
                 }
             }
-            // acc[i] += beta^(i+1) * prev; the only place where
-            // state from before the block enters.
-            for (acc, &coeff) in acc.iter_mut().zip(carry_coeffs.iter()) {
+            // acc[i] += beta^(i+1) * prev; the only place where state from
+            // before the block enters.
+            for (acc, &coeff) in acc.iter_mut().zip(self.carry_coeffs.iter()) {
                 *acc += coeff * self.prev;
             }
 
@@ -264,6 +293,7 @@ impl<T: Sample> LowpassFilter<T> {
                 *sample = *acc;
             }
         }
+
         // Process the tail (the leftover samples) sequentially.
         for sample in remainder {
             *sample = self.run(*sample);
@@ -332,7 +362,10 @@ pub fn lowpass_filter_f64<'a, I: IntoIterator<Item = &'a mut f64>>(
 /// [`LowpassFilter::run_slice`].
 ///
 /// Significantly faster than [`lowpass_filter`], with results equal up to
-/// tiny floating point rounding differences (roughly `1e-6`).
+/// tiny floating point rounding differences (roughly `1e-6`). Use this
+/// **only in oneshot mode**. In streaming mode, for performance reasons, it is
+/// recommended to create the filter once and invoke
+/// [`LowpassFilter::run_slice()`] multiple times.
 ///
 /// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
 /// also the default in DSP. All values must be finite, i.e., not NaN or
@@ -351,8 +384,11 @@ pub fn lowpass_filter_slice(samples: &mut [f32], sample_rate_hz: f32, cutoff_fre
 /// Applies a [`LowpassFilter`] to the slice in-place via
 /// [`LowpassFilter::run_slice`].
 ///
-/// Significantly faster than [`lowpass_filter_f64`], with results equal up
-/// to tiny floating point rounding differences.
+/// Significantly faster than [`lowpass_filter_f64`], with results equal up to
+/// tiny floating point rounding differences (roughly `1e-6`). Use this
+/// **only in oneshot mode**. In streaming mode, for performance reasons, it is
+/// recommended to create the filter once and invoke
+/// [`LowpassFilter::run_slice()`] multiple times.
 ///
 /// It is recommended to operate on f64 values in range `-1.0..=1.0`, which is
 /// also the default in DSP. All values must be finite, i.e., not NaN or

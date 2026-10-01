@@ -4,6 +4,8 @@
 - Do not force range `-1.0..=1.0` onto users but still highly recommend it:
   Removing `clamp()` increases normal throughput by 8% and for the slice-based
   functions up to 50%.
+- Optimize `.run_slice()` in streaming setups (called frequently) on only a few
+  samples (less than 512) by 5%
 
 ## v0.5.0 (2026-09-05)
 - Significantly improved performance. Compared to the previous release,
