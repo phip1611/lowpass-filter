@@ -91,7 +91,7 @@ SOFTWARE.
 extern crate std;
 
 use core::fmt::{Debug, Display};
-use core::ops::{Add, AddAssign, Div, Mul, Neg, RangeInclusive, Sub};
+use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 
 mod sealed {
     /// Seals [`super::Sample`] so it cannot be implemented outside this
@@ -125,10 +125,6 @@ pub trait Sample:
     const TWO: Self;
     /// Archimedes' constant (π).
     const PI: Self;
-
-    /// See [`f32::clamp`].
-    #[must_use]
-    fn clamp(self, min: Self, max: Self) -> Self;
 }
 
 impl Sample for f32 {
@@ -136,11 +132,6 @@ impl Sample for f32 {
     const ONE: Self = 1.0;
     const TWO: Self = 2.0;
     const PI: Self = core::f32::consts::PI;
-
-    #[inline]
-    fn clamp(self, min: Self, max: Self) -> Self {
-        Self::clamp(self, min, max)
-    }
 }
 
 impl Sample for f64 {
@@ -148,11 +139,6 @@ impl Sample for f64 {
     const ONE: Self = 1.0;
     const TWO: Self = 2.0;
     const PI: Self = core::f64::consts::PI;
-
-    #[inline]
-    fn clamp(self, min: Self, max: Self) -> Self {
-        Self::clamp(self, min, max)
-    }
 }
 
 /// A first-order lowpass filter compatible with `f32` and `f64`.
@@ -199,18 +185,12 @@ impl<T: Sample> LowpassFilter<T> {
 
     /// Filter a single sample and return the filtered result.
     ///
-    /// It is mandatory to operate on values in range `-1.0..=1.0`, which is
-    /// also the default in DSP. The returned value is also guaranteed to be in
-    /// that range.
+    /// It is recommended to operate on values in range `-1.0..=1.0`, which is
+    /// also the default in DSP. All values must be finite, i.e., not NaN or
+    /// infinite.
     #[inline]
     pub fn run(&mut self, input: T) -> T {
-        let range: RangeInclusive<T> = -T::ONE..=T::ONE;
-        debug_assert!(
-            range.contains(&input),
-            "samples must be in range {range:?}: {input}"
-        );
-
-        let value = if self.next_is_first {
+        if self.next_is_first {
             self.next_is_first = false;
             self.prev = input;
             input * self.alpha
@@ -218,11 +198,7 @@ impl<T: Sample> LowpassFilter<T> {
             // Re-associated form of `prev + alpha * (input - prev)`:
             self.prev = self.alpha * input + self.beta * self.prev;
             self.prev
-        };
-
-        // very small deviations caused by floating point operations
-        // are tolerable; just truncate the value
-        value.clamp(-T::ONE, T::ONE)
+        }
     }
 
     /// Filter a whole slice of samples in-place.
@@ -233,21 +209,13 @@ impl<T: Sample> LowpassFilter<T> {
     /// consecutive calls compose, also when mixed with
     /// [`Self::run`].
     ///
-    /// # Math
-    /// Unrolling `y[n] = alpha * x[n] + beta * y[n-1]` over a block
-    /// of samples yields
-    ///
-    /// ```text
-    /// y[i] = beta^(i+1) * prev + sum(alpha * beta^(i-j) * x[j] for j <= i)
-    /// ```
-    ///
-    /// so within a block, samples only depend on the state `prev`
-    /// from before the block and can be computed in parallel, which
-    /// enables compiler auto-vectorization (SIMD). Only `prev`
-    /// propagates serially between blocks.
+    /// It is recommended to operate on values in range `-1.0..=1.0`, which is
+    /// also the default in DSP. All values must be finite, i.e., not NaN or
+    /// infinite.
     ///
     /// # Arguments
-    /// - `samples`: Samples to filter in-place, in range `-1.0..=1.0`.
+    /// - `samples`: Samples to filter in-place, preferably in range
+    ///   `-1.0..=1.0`.
     pub fn run_slice(&mut self, samples: &mut [T]) {
         // Block size. 8 measured fastest on x86-64 for f32 and f64.
         const LANES: usize = 8;
@@ -302,13 +270,13 @@ impl<T: Sample> LowpassFilter<T> {
             for (acc, &coeff) in acc.iter_mut().zip(carry_coeffs.iter()) {
                 *acc += coeff * self.prev;
             }
-            // like in `run`, `prev` keeps the unclamped value
+
             self.prev = acc[LANES - 1];
             for (sample, acc) in chunk.iter_mut().zip(acc.iter()) {
-                *sample = acc.clamp(-T::ONE, T::ONE);
+                *sample = *acc;
             }
         }
-        // Process the up to LANES - 1 leftover samples sequentially.
+        // Process the tail (the leftover samples) sequentially.
         for sample in remainder {
             *sample = self.run(*sample);
         }
@@ -324,8 +292,9 @@ impl<T: Sample> LowpassFilter<T> {
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
 ///
-/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `sample_iter`: Iterator over the samples. This can also be a
@@ -349,8 +318,9 @@ pub fn lowpass_filter<'a, I: IntoIterator<Item = &'a mut f32>>(
 /// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
 /// changes the items in-place.
 ///
-/// It is mandatory to operate on f64 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f64 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `sample_iter`: Iterator over the samples. This can also be a
@@ -377,8 +347,9 @@ pub fn lowpass_filter_f64<'a, I: IntoIterator<Item = &'a mut f64>>(
 /// Significantly faster than [`lowpass_filter`], with results equal up to
 /// tiny floating point rounding differences (roughly `1e-6`).
 ///
-/// It is mandatory to operate on f32 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `samples`: Samples to filter in-place.
@@ -396,8 +367,9 @@ pub fn lowpass_filter_slice(samples: &mut [f32], sample_rate_hz: f32, cutoff_fre
 /// Significantly faster than [`lowpass_filter_f64`], with results equal up
 /// to tiny floating point rounding differences.
 ///
-/// It is mandatory to operate on f64 values in range `-1.0..=1.0`, which is
-/// also the default in DSP.
+/// It is recommended to operate on f64 values in range `-1.0..=1.0`, which is
+/// also the default in DSP. All values must be finite, i.e., not NaN or
+/// infinite.
 ///
 /// # Arguments
 /// - `samples`: Samples to filter in-place.

@@ -1,6 +1,9 @@
 # Changelog for `lowpass-filter`
 
 ## Unreleased
+- Do not force range `-1.0..=1.0` onto users but still highly recommend it:
+  Removing `clamp()` increases normal throughput by 8% and for the slice-based
+  functions up to 50%.
 
 ## v0.5.0 (2026-09-05)
 - Significantly improved performance. Compared to the previous release,
