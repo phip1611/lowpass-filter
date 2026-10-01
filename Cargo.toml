@@ -26,6 +26,10 @@ exclude = [
   "test/",
 ]
 
+[lib]
+# Lets `cargo bench -- <criterion args>` work, libtest would reject them.
+bench = false
+
 [dependencies]
 
 [dev-dependencies]
