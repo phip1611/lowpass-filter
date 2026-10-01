@@ -1,3 +1,4 @@
+use biquad::{Biquad, Coefficients, DirectForm2Transposed, ToHertz, Type};
 use criterion::measurement::WallTime;
 use criterion::{
     AxisScale, BatchSize, BenchmarkGroup, BenchmarkId, Criterion, PlotConfiguration, Throughput,
@@ -25,6 +26,7 @@ const STREAM_SAMPLE_COUNT: usize = SAMPLE_RATE_HZ as usize;
 trait BenchSample: Sample {
     const NAME: &'static str;
     fn from_f64(x: f64) -> Self;
+    fn biquad() -> impl Biquad<Self>;
 }
 
 macro_rules! impl_bench_sample {
@@ -34,6 +36,18 @@ macro_rules! impl_bench_sample {
 
             fn from_f64(x: f64) -> Self {
                 x as $t
+            }
+
+            fn biquad() -> impl Biquad<Self> {
+                let coeffs = Coefficients::<$t>::from_params(
+                    Type::SinglePoleLowPass,
+                    (SAMPLE_RATE_HZ as $t).hz(),
+                    (CUTOFF_HZ as $t).hz(),
+                    // Ignored by single-pole filters, but must be positive.
+                    1.0,
+                )
+                .expect("should accept parameters below Nyquist");
+                DirectForm2Transposed::<$t>::new(coeffs)
             }
         }
     };
@@ -50,6 +64,12 @@ fn new_filter<T: BenchSample>() -> LowpassFilter<T> {
 fn run<T: BenchSample>(filter: &mut LowpassFilter<T>, samples: &mut [T]) {
     for sample in samples {
         *sample = filter.run(*sample);
+    }
+}
+
+fn run_biquad<T: Copy>(biquad: &mut impl Biquad<T>, samples: &mut [T]) {
+    for sample in samples {
+        *sample = biquad.run(*sample);
     }
 }
 
@@ -81,6 +101,7 @@ fn bench_variants<T: BenchSample>(group: &mut BenchmarkGroup<WallTime>, mode: Mo
         new_filter,
         LowpassFilter::run_slice,
     );
+    bench_variant(group, mode, input, "biquad", T::biquad, run_biquad);
 }
 
 /// Times `process` on a fresh copy of `input` per iteration.

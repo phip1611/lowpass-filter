@@ -34,6 +34,7 @@ bench = false
 
 [dev-dependencies]
 audio-visualizer = "0.7" # to visualize the output
+biquad = "0.6"
 criterion = { version = "0.8", features = ["html_reports"] }
 hound = "3.5"
 itertools = "0.15"
