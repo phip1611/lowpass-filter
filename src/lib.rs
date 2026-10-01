@@ -420,27 +420,32 @@ mod test_util;
 mod tests {
     use super::*;
     use crate::test_util::{calculate_power, sine_wave_samples, target_dir_test_artifacts};
-    use audio_visualizer::Channels;
-    use audio_visualizer::waveform::plotters_png_file::waveform_static_plotters_png_visualize;
     use std::vec::Vec;
+    use audio_visualizer::WaveformVisualizer;
 
     #[test]
     fn test_lpf_and_visualize() {
-        let samples_l_orig = sine_wave_samples(120.0, 44100.0);
-        let samples_h_orig = sine_wave_samples(350.0, 44100.0);
+        let sampling_rate = 44100.0;
+        let samples_l_orig = sine_wave_samples(120.0, sampling_rate);
+        let samples_h_orig = sine_wave_samples(350.0, sampling_rate);
 
-        waveform_static_plotters_png_visualize(
-            &samples_l_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_l_orig.png",
-        );
-        waveform_static_plotters_png_visualize(
-            &samples_h_orig.iter().map(|x| *x as i16).collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_h_orig.png",
-        );
+        WaveformVisualizer::new(&samples_l_orig)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_l_orig.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
+
+        WaveformVisualizer::new(&samples_h_orig)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_h_orig.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
 
         let mut samples_l_lowpassed = samples_l_orig.clone();
         let mut samples_h_lowpassed = samples_h_orig.clone();
@@ -448,30 +453,29 @@ mod tests {
         let power_l_orig = calculate_power(&samples_l_orig);
         let power_h_orig = calculate_power(&samples_h_orig);
 
-        lowpass_filter_f64(samples_l_lowpassed.as_mut_slice(), 44100.0, 90.0);
-        lowpass_filter_f64(samples_h_lowpassed.as_mut_slice(), 44100.0, 90.0);
+        lowpass_filter_slice(samples_l_lowpassed.as_mut_slice(), sampling_rate, 90.0);
+        lowpass_filter_slice(samples_h_lowpassed.as_mut_slice(), sampling_rate, 90.0);
 
         let power_l_lowpassed = calculate_power(&samples_l_lowpassed);
         let power_h_lowpassed = calculate_power(&samples_h_lowpassed);
 
-        waveform_static_plotters_png_visualize(
-            &samples_l_lowpassed
-                .iter()
-                .map(|x| *x as i16)
-                .collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_l_after.png",
-        );
-        waveform_static_plotters_png_visualize(
-            &samples_h_lowpassed
-                .iter()
-                .map(|x| *x as i16)
-                .collect::<Vec<_>>(),
-            Channels::Mono,
-            target_dir_test_artifacts().to_str().unwrap(),
-            "test_lpf_h_after.png",
-        );
+        WaveformVisualizer::new(&samples_l_lowpassed)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_l_after.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
+
+        WaveformVisualizer::new(&samples_h_lowpassed)
+            .sample_rate(sampling_rate)
+            .y_range(-1.0..1.0)
+            .write_png(format!(
+                "{}/test_lpf_h_after.png",
+                target_dir_test_artifacts().display()
+            ))
+            .unwrap();
 
         assert!(power_h_lowpassed < power_h_orig);
         assert!(power_l_lowpassed < power_l_orig);
@@ -537,17 +541,18 @@ mod tests {
     /// Tests if the functions with f32 and f64 behave similar.
     #[test]
     fn test_lpf_f32_f64() {
-        let samples_h_orig = sine_wave_samples(350.0, 44100.0);
-        let mut lowpassed_f32 = samples_h_orig.iter().map(|x| *x as f32).collect::<Vec<_>>();
-        #[allow(clippy::redundant_clone)]
-        let mut lowpassed_f64 = samples_h_orig.clone();
+        let sampling_rate = 44100.0;
 
-        lowpass_filter(lowpassed_f32.as_mut_slice(), 44100.0, 90.0);
-        lowpass_filter_f64(lowpassed_f64.as_mut_slice(), 44100.0, 90.0);
+        let samples_h_orig = sine_wave_samples(350.0, sampling_rate);
+        let mut lowpassed_f32 = samples_h_orig.clone();
+        let mut lowpassed_f64 = samples_h_orig.iter().map(|x| *x as f64).collect::<Vec<_>>();
 
-        let power_f32 =
-            calculate_power(&lowpassed_f32.iter().map(|x| *x as f64).collect::<Vec<_>>());
-        let power_f64 = calculate_power(&lowpassed_f64);
+        lowpass_filter(&mut lowpassed_f32, sampling_rate, 90.0);
+        lowpass_filter_f64(&mut lowpassed_f64, sampling_rate as f64, 90.0);
+
+        let power_f32 = calculate_power(&lowpassed_f32);
+        let power_f64 =
+            calculate_power(&lowpassed_f64.iter().map(|x| *x as f32).collect::<Vec<_>>());
 
         assert!((power_f32 - power_f64).abs() <= 0.00024);
     }

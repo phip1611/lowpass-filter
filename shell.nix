@@ -5,10 +5,13 @@
 let
   libs = with pkgs; [
     alsa-lib
-    fontconfig
-    libX11
-    libXcursor
+    libGL
+    libx11
+    libxcursor
+    libxi
     libxkbcommon
+    libxrandr
+    wayland
   ];
 in
 pkgs.mkShell rec {
@@ -20,5 +23,5 @@ pkgs.mkShell rec {
     ]
     ++ libs;
 
-  LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath libs}";
+  LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath libs;
 }

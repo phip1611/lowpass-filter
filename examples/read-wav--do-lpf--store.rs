@@ -2,9 +2,7 @@ use crate::test_util::{
     f32_sample_to_i16, i16_sample_to_f32, read_wav_to_mono, target_dir_test_artifacts,
     write_wav_file,
 };
-use audio_visualizer::Channels;
-use audio_visualizer::spectrum::plotters_png_file::spectrum_static_plotters_png_visualize;
-use audio_visualizer::waveform::png_file::waveform_static_png_visualize;
+use audio_visualizer::WaveformVisualizer;
 use lowpass_filter::lowpass_filter;
 use spectrum_analyzer::scaling::scale_to_zero_to_one;
 use spectrum_analyzer::windows::hann_window;
@@ -47,12 +45,15 @@ fn main() {
         wavspec.sample_rate as f32,
         "wav-original-spectrum--mono.png",
     );
-    waveform_static_png_visualize(
-        &samples_unprocessed_i16,
-        Channels::Mono,
-        target_dir_test_artifacts().to_str().unwrap(),
-        "wav-original-waveform--mono.png",
-    );
+
+    WaveformVisualizer::new(&samples_unprocessed_f32)
+        .sample_rate(wavspec.sample_rate as f32)
+        .y_range(-1.0..1.0)
+        .write_png(format!(
+            "{}/wav-original-waveform--mono.png",
+            target_dir_test_artifacts().display()
+        ))
+        .unwrap();
 
     // Apply LPF n times
     let mut samples_processed_f32 = samples_unprocessed_f32.clone();
@@ -90,12 +91,14 @@ fn main() {
         wavspec.sample_rate as f32,
         "wav-lowpassed-spectrum--mono.png",
     );
-    waveform_static_png_visualize(
-        &samples_processed_i16,
-        Channels::Mono,
-        target_dir_test_artifacts().to_str().unwrap(),
-        "wav-lowpassed-waveform--mono.png",
-    );
+    WaveformVisualizer::new(&samples_processed_f32)
+        .sample_rate(wavspec.sample_rate as f32)
+        .y_range(-1.0..1.0)
+        .write_png(format!(
+            "{}/wav-lowpassed-waveform--mono.png",
+            target_dir_test_artifacts().display()
+        ))
+        .unwrap();
 }
 
 fn samples_to_spectrum_and_plot(audio_data: &[f32], sampling_rate: f32, filename: &str) {
@@ -105,13 +108,21 @@ fn samples_to_spectrum_and_plot(audio_data: &[f32], sampling_rate: f32, filename
     let spectrum = samples_fft_to_spectrum(
         &samples_for_spectrum,
         sampling_rate as u32,
-        FrequencyLimit::Max(5000.0),
+        FrequencyLimit::max(5000.0),
         Some(&scale_to_zero_to_one),
     )
     .unwrap();
-    spectrum_static_plotters_png_visualize(
-        &spectrum.to_map(),
-        target_dir_test_artifacts().to_str().unwrap(),
-        filename,
-    );
+
+    let spectrum_raw = spectrum
+        .data()
+        .iter()
+        .map(|(a, b)| (a.val(), b.val()))
+        .collect::<Vec<_>>();
+
+    audio_visualizer::SpectrumVisualizer::new(&spectrum_raw[0..16384])
+        .write_png(format!(
+            "{}/{filename}",
+            target_dir_test_artifacts().display()
+        ))
+        .unwrap();
 }

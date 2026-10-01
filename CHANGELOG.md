@@ -1,6 +1,8 @@
 # Changelog for `lowpass-filter`
 
 ## Unreleased
+
+## v0.5.0 (2026-09-05)
 - Significantly improved performance. Compared to the previous release,
   expect roughly 1.5x throughput from the existing iterator-based API and
   roughly 3-5x from the new slice-based API (measured on x86_64; exact
