@@ -189,6 +189,7 @@ impl<T: Sample> LowpassFilter<T> {
     /// also the default in DSP. All values must be finite, i.e., not NaN or
     /// infinite.
     #[inline]
+    #[must_use]
     pub fn run(&mut self, input: T) -> T {
         if self.next_is_first {
             self.next_is_first = false;
@@ -203,11 +204,10 @@ impl<T: Sample> LowpassFilter<T> {
 
     /// Filter a whole slice of samples in-place.
     ///
-    /// Matches calling [`Self::run`] per sample up to tiny floating
-    /// point rounding differences (roughly `1e-6` for `f32`), but
-    /// is significantly faster. The filter state is updated, so
-    /// consecutive calls compose, also when mixed with
-    /// [`Self::run`].
+    /// Matches calling [`Self::run`] per sample up to tiny floating point
+    /// rounding differences (roughly `1e-6` for `f32`), but is significantly
+    /// faster. The filter state is updated, so consecutive calls compose, also
+    /// when mixed with [`Self::run`].
     ///
     /// It is recommended to operate on values in range `-1.0..=1.0`, which is
     /// also the default in DSP. All values must be finite, i.e., not NaN or
@@ -216,6 +216,7 @@ impl<T: Sample> LowpassFilter<T> {
     /// # Arguments
     /// - `samples`: Samples to filter in-place, preferably in range
     ///   `-1.0..=1.0`.
+    #[inline]
     pub fn run_slice(&mut self, samples: &mut [T]) {
         // Block size. 8 measured fastest on x86-64 for f32 and f64.
         const LANES: usize = 8;
