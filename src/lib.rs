@@ -157,7 +157,6 @@ pub struct LowpassFilter<T> {
     /// Precomputed `1 - alpha`.
     beta: T,
     prev: T,
-    next_is_first: bool,
 }
 
 impl<T: Sample> LowpassFilter<T> {
@@ -179,7 +178,6 @@ impl<T: Sample> LowpassFilter<T> {
             alpha,
             beta: T::ONE - alpha,
             prev: T::ZERO,
-            next_is_first: true,
         }
     }
 
@@ -191,15 +189,12 @@ impl<T: Sample> LowpassFilter<T> {
     #[inline]
     #[must_use]
     pub fn run(&mut self, input: T) -> T {
-        if self.next_is_first {
-            self.next_is_first = false;
-            self.prev = input;
-            input * self.alpha
-        } else {
-            // Re-associated form of `prev + alpha * (input - prev)`:
-            self.prev = self.alpha * input + self.beta * self.prev;
-            self.prev
-        }
+        // Re-associated form of `prev + alpha * (input - prev)`:
+        //
+        // On the very first iteration, the second part is zero and `input`
+        // is only influences by `alpha`.
+        self.prev = self.alpha * input + self.beta * self.prev;
+        self.prev
     }
 
     /// Filter a whole slice of samples in-place.
@@ -221,16 +216,8 @@ impl<T: Sample> LowpassFilter<T> {
         // Block size. 8 measured fastest on x86-64 for f32 and f64.
         const LANES: usize = 8;
 
-        let mut samples = samples;
-        // The first sample is special-cased in `run`; handle it
-        // there so the block form below is uniform.
-        if self.next_is_first {
-            if let Some((first, rest)) = samples.split_first_mut() {
-                *first = self.run(*first);
-                samples = rest;
-            } else {
-                return;
-            }
+        if samples.is_empty() {
+            return;
         }
 
         // Coefficients of the closed block form (see doc comment):
@@ -286,7 +273,6 @@ impl<T: Sample> LowpassFilter<T> {
     /// Reset the internal filter state.
     pub const fn reset(&mut self) {
         self.prev = T::ZERO;
-        self.next_is_first = true;
     }
 }
 
