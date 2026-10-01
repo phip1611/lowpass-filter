@@ -149,7 +149,7 @@ pub fn sine_wave(fr: f32) -> impl Fn(f32) -> f32 {
 /// Creates a two second long audio snippet from the given frequency.
 pub fn sine_wave_samples(fr: f32, sampling_rate: f32) -> Vec<f32> {
     let sine_wave = sine_wave(fr);
-    let seconds = 2;
+    let seconds = 1;
     (0..(seconds * sampling_rate as usize))
         .map(|x| x as f32)
         .map(|t| t / sampling_rate)

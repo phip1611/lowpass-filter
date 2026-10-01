@@ -421,9 +421,10 @@ mod tests {
 
     #[test]
     fn test_lpf_and_visualize() {
-        let sampling_rate = 44100.0;
-        let samples_l_orig = sine_wave_samples(120.0, sampling_rate);
-        let samples_h_orig = sine_wave_samples(350.0, sampling_rate);
+        let sampling_rate = 100.0;
+        let cutoff_fr = 10.0;
+        let samples_l_orig = sine_wave_samples(15.0, sampling_rate);
+        let samples_h_orig = sine_wave_samples(40.0, sampling_rate);
 
         WaveformVisualizer::new(&samples_l_orig)
             .sample_rate(sampling_rate)
@@ -449,8 +450,8 @@ mod tests {
         let power_l_orig = calculate_power(&samples_l_orig);
         let power_h_orig = calculate_power(&samples_h_orig);
 
-        lowpass_filter_slice(samples_l_lowpassed.as_mut_slice(), sampling_rate, 90.0);
-        lowpass_filter_slice(samples_h_lowpassed.as_mut_slice(), sampling_rate, 90.0);
+        lowpass_filter_slice(&mut samples_l_lowpassed, sampling_rate, cutoff_fr);
+        lowpass_filter_slice(&mut samples_h_lowpassed, sampling_rate, cutoff_fr);
 
         let power_l_lowpassed = calculate_power(&samples_l_lowpassed);
         let power_h_lowpassed = calculate_power(&samples_h_lowpassed);
