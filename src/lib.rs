@@ -66,12 +66,21 @@ SOFTWARE.
 //!
 //! ## Performance
 //!
-//! [`LowpassFilter::run_slice`] is 1.8-4.1x faster than
+//! On x86, [`LowpassFilter::run_slice`] is 2-4x faster than
 //! [`LowpassFilter::run`], depending on the sample type and the enabled CPU
 //! features: newer ones allow wider SIMD instructions, e.g., with
-//! `-C target-cpu=native`. See the
-//! [README](https://github.com/phip1611/lowpass-filter#performance) for
-//! measurements, including a comparison with the `biquad` crate.
+//! `-C target-cpu=native`.
+//!
+//! The optional `simd` cargo feature makes `run_slice` use explicit SIMD via
+//! the [wide] crate instead of relying on compiler auto-vectorization. It is
+//! faster on all measured CPUs, for `f32` up to 1.5x on x86 and 2.3x on ARM.
+//! The trade-off is a dependency and an MSRV of Rust 1.89. Without the
+//! feature, this crate has no dependencies.
+//!
+//! See the [README](https://github.com/phip1611/lowpass-filter#performance)
+//! for measurements, including a comparison with the `biquad` crate.
+//!
+//! [wide]: https://crates.io/crates/wide
 
 #![deny(
     clippy::all,

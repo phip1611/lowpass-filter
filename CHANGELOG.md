@@ -15,6 +15,20 @@
     `LowpassFilter::new(sr, fc).run_slice(&mut s)`
   - `lowpass_filter(&mut s, sr, fc)` -> same as above; for samples not in a
     slice, call `LowpassFilter::run` per sample.
+- Added the optional `simd` cargo feature: `LowpassFilter::run_slice` then
+  uses explicit SIMD via the `wide` crate instead of compiler
+  auto-vectorization. For `f32`, expect roughly 1.5x the throughput of
+  `run_slice` without the feature on x86 and 2.3x on aarch64. On x86, this
+  holds both for the default `x86_64` target and when compiling for
+  `x86-64-v3` or newer (e.g., `-C target-cpu=x86-64-v3` or `native`). The
+  latter enables wider SIMD registers (AVX2 and newer), which increases the
+  throughput further, with and without the feature. It requires Rust 1.89;
+  without the feature, this crate stays dependency-free.
+- `LowpassFilter::run_slice` processes blocks of 4 samples instead of 8, unless
+  AVX2 is enabled at compile time (e.g., `-C target-cpu=x86-64-v3`). This fits
+  128-bit SIMD registers (SSE2, NEON) and is up to 2x faster for short inputs,
+  streaming, and `f64`. Without the `simd` feature, `f32` inputs of 1024 or
+  more samples per call can be up to 18% slower.
 
 ## v0.5.0 (2026-09-05)
 - Significantly improved performance. Compared to the previous release,
