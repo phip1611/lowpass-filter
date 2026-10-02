@@ -3,6 +3,9 @@
 ## Unreleased
 
 ## v0.6.0 (2026-10-02)
+
+TL;DR: This is now a highly optimized library.
+
 - Breaking: Removed `lowpass_filter`, `lowpass_filter_f64`,
   `lowpass_filter_slice`, and `lowpass_filter_slice_f64`. `LowpassFilter` is
   now the only entry point:
