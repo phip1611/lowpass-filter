@@ -29,43 +29,40 @@ SOFTWARE.
 //! code, and performs no allocations, making it suitable for any target from
 //! desktop to embedded.
 //!
-//! Samples must be in range `-1.0..=1.0`, which is the default in DSP.
+//! Samples should be in range `-1.0..=1.0`, which is the default in DSP.
 //!
 //! ## Usage
 //!
-//! To filter a buffer of samples in one go, use [`lowpass_filter_slice`]
-//! (or [`lowpass_filter_slice_f64`]). This is the fastest option: it
-//! processes samples in blocks that compilers auto-vectorize (SIMD),
-//! several times faster than per-sample processing.
+//! Create a [`LowpassFilter`] and pass your samples to
+//! [`LowpassFilter::run_slice`]. It processes samples in blocks that
+//! compilers auto-vectorize (SIMD), several times faster than per-sample
+//! processing.
 //!
 //! ```rust
-//! use lowpass_filter::lowpass_filter_slice;
+//! use lowpass_filter::LowpassFilter;
 //!
 //! // Mono audio samples, recorded at 44.1 kHz sample rate.
-//! let mut samples = [0.0, 0.3, -0.6, 0.8, 0.5, -0.2];
+//! let mut samples = [0.0_f32, 0.3, -0.6, 0.8, 0.5, -0.2];
 //! // Only keep frequencies below 120 Hz; mutates the buffer in-place.
-//! lowpass_filter_slice(&mut samples, 44100.0, 120.0);
+//! LowpassFilter::new(44100.0, 120.0).run_slice(&mut samples);
 //! ```
 //!
-//! For streaming data, e.g. in an audio callback, keep a [`LowpassFilter`]
-//! around: its state carries over between calls, so chunked processing
-//! equals processing everything at once. It also filters single samples,
-//! e.g. inside iterator chains.
+//! For streaming data, e.g. in an audio callback, create the filter once and
+//! reuse it. Its state carries over between calls, so filtering chunk by
+//! chunk equals filtering everything at once. A new filter per chunk starts
+//! from silence at every chunk boundary, which distorts the signal.
 //!
 //! ```rust
 //! use lowpass_filter::LowpassFilter;
 //!
 //! let mut filter = LowpassFilter::<f32>::new(44100.0, 120.0);
-//! // Process data as it arrives (fast block processing) ...
 //! for mut chunk in [[0.0, 0.3, -0.6, 0.8], [0.5, -0.2, 0.1, 0.4]] {
 //!     filter.run_slice(&mut chunk);
 //! }
-//! // ... or one sample at a time.
-//! let filtered = filter.run(0.25);
 //! ```
 //!
-//! The iterator-based [`lowpass_filter`] and [`lowpass_filter_f64`]
-//! functions are convenient when the samples do not live in a slice.
+//! For samples that do not live in a slice, filter them one at a time with
+//! [`LowpassFilter::run`]. See [`LowpassFilter`] for more examples.
 
 #![deny(
     clippy::all,
@@ -145,18 +142,88 @@ impl Sample for f64 {
 /// and f64.
 const LANES: usize = 8;
 
-/// A first-order lowpass filter compatible with `f32` and `f64`.
+/// A first-order lowpass filter for `f32` and `f64` samples.
 ///
-/// It can consume and filter items one-by-one (iterator-style API) or operate
-/// on slices ([`LowpassFilter::run_slice`]).
+/// The filter is stateful: each output depends on the previous one. Filter
+/// samples in-place with [`Self::run_slice`] (preferred, significantly
+/// faster) or one at a time with [`Self::run`]. Both continue from the same
+/// state and can be mixed freely. Use [`Self::reset`] before filtering an
+/// unrelated signal.
 ///
-/// It is mandatory to operate on values in range `-1.0..=1.0`, which is also
-/// the default in DSP.
+/// It is recommended to operate on values in range `-1.0..=1.0`, which is also
+/// the default in DSP. All values must be finite, i.e., not NaN or infinite.
+///
+/// Using `f32` (the default) is recommended: for audio processing, it is
+/// accurate enough and significantly faster than `f64`.
+///
+/// # Examples
+///
+/// Filter a whole buffer in one go:
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// let mut samples = [0.0_f32, 0.3, -0.6, 0.8, 0.5, -0.2];
+/// LowpassFilter::new(44100.0, 120.0).run_slice(&mut samples);
+/// ```
+///
+/// Streaming: keep one filter per signal for its whole lifetime, e.g. in
+/// your audio processor. Its state carries over between calls, so filtering
+/// buffer by buffer equals filtering everything at once:
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// struct BassExtractor {
+///     filter: LowpassFilter,
+/// }
+///
+/// impl BassExtractor {
+///     /// Called by the audio backend for each new buffer.
+///     fn process(&mut self, buffer: &mut [f32]) {
+///         self.filter.run_slice(buffer);
+///     }
+/// }
+///
+/// let mut bass = BassExtractor {
+///     filter: LowpassFilter::new(44100.0, 120.0),
+/// };
+/// bass.process(&mut [0.0, 0.3, -0.6, 0.8]);
+/// bass.process(&mut [0.5, -0.2, 0.1, 0.4]);
+/// ```
+///
+/// Interleaved stereo: every channel is a separate signal and needs its own
+/// filter state. For large buffers, deinterleaving into one buffer per
+/// channel and using [`Self::run_slice`] might be faster.
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// // [l, r, l, r, ...]
+/// let mut stereo = [0.1_f32, -0.1, 0.4, -0.4, 0.2, -0.2];
+/// let mut left = LowpassFilter::new(44100.0, 120.0);
+/// let mut right = left.clone();
+/// for frame in stereo.chunks_exact_mut(2) {
+///     frame[0] = left.run(frame[0]);
+///     frame[1] = right.run(frame[1]);
+/// }
+/// ```
+///
+/// Smoothing values as they arrive, e.g. sensor readings:
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// // 100 Hz sensor, suppress jitter above 5 Hz
+/// let mut filter = LowpassFilter::<f64>::new(100.0, 5.0);
+/// let readings = [0.50, 0.52, 0.91, 0.49, 0.51];
+/// let smoothed = readings.map(|reading| filter.run(reading));
+/// ```
 ///
 /// # More Info
 /// - <https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter>
 #[derive(Debug, Clone)]
-pub struct LowpassFilter<T> {
+pub struct LowpassFilter<T = f32> {
     alpha: T,
     /// Precomputed `1 - alpha`.
     beta: T,
@@ -171,6 +238,10 @@ impl<T: Sample> LowpassFilter<T> {
     /// # Arguments
     /// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
     /// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+    ///
+    /// # Panics
+    /// Panics if `cutoff_frequency_hz` is above the Nyquist frequency, i.e.,
+    /// half of `sample_rate_hz`.
     #[must_use]
     pub fn new(sample_rate_hz: T, cutoff_frequency_hz: T) -> Self {
         // Nyquist rule
@@ -235,6 +306,9 @@ impl<T: Sample> LowpassFilter<T> {
 
     /// Filter a single sample and return the filtered result.
     ///
+    /// For samples in a slice, prefer [`Self::run_slice`], which is
+    /// significantly faster.
+    ///
     /// It is recommended to operate on values in range `-1.0..=1.0`, which is
     /// also the default in DSP. All values must be finite, i.e., not NaN or
     /// infinite.
@@ -244,7 +318,7 @@ impl<T: Sample> LowpassFilter<T> {
         // Re-associated form of `prev + alpha * (input - prev)`:
         //
         // On the very first iteration, the second part is zero and `input`
-        // is only influences by `alpha`.
+        // is only influenced by `alpha`.
         self.prev = self.alpha * input + self.beta * self.prev;
         self.prev
     }
@@ -306,108 +380,6 @@ impl<T: Sample> LowpassFilter<T> {
     }
 }
 
-/// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
-/// changes the items in-place.
-///
-/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
-/// also the default in DSP. All values must be finite, i.e., not NaN or
-/// infinite.
-///
-/// # Arguments
-/// - `sample_iter`: Iterator over the samples. This can also be a
-///   `[1.0, ...]`-style slice
-/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
-/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
-#[inline]
-pub fn lowpass_filter<'a, I: IntoIterator<Item = &'a mut f32>>(
-    sample_iter: I,
-    sample_rate_hz: f32,
-    cutoff_frequency_hz: f32,
-) {
-    let mut filter = LowpassFilter::<f32>::new(sample_rate_hz, cutoff_frequency_hz);
-
-    for sample in sample_iter.into_iter() {
-        let new_sample = filter.run(*sample);
-        *sample = new_sample;
-    }
-}
-
-/// Applies a [`LowpassFilter`] to the data provided in the mutable buffer and
-/// changes the items in-place.
-///
-/// It is recommended to operate on f64 values in range `-1.0..=1.0`, which is
-/// also the default in DSP. All values must be finite, i.e., not NaN or
-/// infinite.
-///
-/// # Arguments
-/// - `sample_iter`: Iterator over the samples. This can also be a
-///   `[1.0, ...]`-style slice
-/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
-/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
-#[inline]
-pub fn lowpass_filter_f64<'a, I: IntoIterator<Item = &'a mut f64>>(
-    sample_iter: I,
-    sample_rate_hz: f64,
-    cutoff_frequency_hz: f64,
-) {
-    let mut filter = LowpassFilter::<f64>::new(sample_rate_hz, cutoff_frequency_hz);
-
-    for sample in sample_iter.into_iter() {
-        let new_sample = filter.run(*sample);
-        *sample = new_sample;
-    }
-}
-
-/// Applies a [`LowpassFilter`] to the slice in-place via
-/// [`LowpassFilter::run_slice`].
-///
-/// Significantly faster than [`lowpass_filter`], with results equal up to
-/// tiny floating point rounding differences (roughly `1e-6`). Use this
-/// **only in oneshot mode**. In streaming mode, for performance reasons, it is
-/// recommended to create the filter once and invoke
-/// [`LowpassFilter::run_slice()`] multiple times.
-///
-/// It is recommended to operate on f32 values in range `-1.0..=1.0`, which is
-/// also the default in DSP. All values must be finite, i.e., not NaN or
-/// infinite.
-///
-/// # Arguments
-/// - `samples`: Samples to filter in-place.
-/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
-/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
-#[inline]
-pub fn lowpass_filter_slice(samples: &mut [f32], sample_rate_hz: f32, cutoff_frequency_hz: f32) {
-    let mut filter = LowpassFilter::<f32>::new(sample_rate_hz, cutoff_frequency_hz);
-    filter.run_slice(samples);
-}
-
-/// Applies a [`LowpassFilter`] to the slice in-place via
-/// [`LowpassFilter::run_slice`].
-///
-/// Significantly faster than [`lowpass_filter_f64`], with results equal up to
-/// tiny floating point rounding differences (roughly `1e-6`). Use this
-/// **only in oneshot mode**. In streaming mode, for performance reasons, it is
-/// recommended to create the filter once and invoke
-/// [`LowpassFilter::run_slice()`] multiple times.
-///
-/// It is recommended to operate on f64 values in range `-1.0..=1.0`, which is
-/// also the default in DSP. All values must be finite, i.e., not NaN or
-/// infinite.
-///
-/// # Arguments
-/// - `samples`: Samples to filter in-place.
-/// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
-/// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
-#[inline]
-pub fn lowpass_filter_slice_f64(
-    samples: &mut [f64],
-    sample_rate_hz: f64,
-    cutoff_frequency_hz: f64,
-) {
-    let mut filter = LowpassFilter::<f64>::new(sample_rate_hz, cutoff_frequency_hz);
-    filter.run_slice(samples);
-}
-
 #[cfg(test)]
 mod test_util;
 
@@ -450,8 +422,10 @@ mod tests {
         let power_l_orig = calculate_power(&samples_l_orig);
         let power_h_orig = calculate_power(&samples_h_orig);
 
-        lowpass_filter_slice(&mut samples_l_lowpassed, sampling_rate, cutoff_fr);
-        lowpass_filter_slice(&mut samples_h_lowpassed, sampling_rate, cutoff_fr);
+        let mut filter = LowpassFilter::new(sampling_rate, cutoff_fr);
+        filter.run_slice(&mut samples_l_lowpassed);
+        filter.reset();
+        filter.run_slice(&mut samples_h_lowpassed);
 
         let power_l_lowpassed = calculate_power(&samples_l_lowpassed);
         let power_h_lowpassed = calculate_power(&samples_h_lowpassed);
@@ -505,8 +479,10 @@ mod tests {
         assert!(loudness(&low_tone) > 0.99);
         assert!(loudness(&high_tone) > 0.99);
 
-        lowpass_filter_slice(&mut low_tone, sample_rate, cutoff);
-        lowpass_filter_slice(&mut high_tone, sample_rate, cutoff);
+        let mut filter = LowpassFilter::new(sample_rate, cutoff);
+        filter.run_slice(&mut low_tone);
+        filter.reset();
+        filter.run_slice(&mut high_tone);
 
         assert!(
             loudness(&low_tone) > 0.9,
@@ -530,7 +506,7 @@ mod tests {
     #[test]
     fn test_abrupt_start_fades_in_without_click() {
         let mut samples = [1.0_f32; 20];
-        lowpass_filter_slice(&mut samples, 44100.0, 1000.0);
+        LowpassFilter::new(44100.0, 1000.0).run_slice(&mut samples);
 
         // The filter starts from silence (0.0), so include it in the output.
         let output = iter::once(0.0).chain(samples).collect::<Vec<_>>();
@@ -568,17 +544,23 @@ mod tests {
             let samples_f32 = samples_f64.iter().map(|&x| x as f32).collect::<Vec<_>>();
 
             let mut expected_f32 = samples_f32.clone();
-            let mut actual_f32 = samples_f32.clone();
-            lowpass_filter(expected_f32.as_mut_slice(), 44100.0, 120.0);
-            lowpass_filter_slice(actual_f32.as_mut_slice(), 44100.0, 120.0);
+            let mut actual_f32 = samples_f32;
+            let mut filter = LowpassFilter::new(44100.0, 120.0);
+            for sample in &mut expected_f32 {
+                *sample = filter.run(*sample);
+            }
+            LowpassFilter::new(44100.0, 120.0).run_slice(&mut actual_f32);
             for (i, (e, a)) in expected_f32.iter().zip(&actual_f32).enumerate() {
                 assert!((e - a).abs() < 1e-5, "f32, n={n}, i={i}: {e} vs {a}");
             }
 
             let mut expected_f64 = samples_f64.clone();
-            let mut actual_f64 = samples_f64.clone();
-            lowpass_filter_f64(expected_f64.as_mut_slice(), 44100.0, 120.0);
-            lowpass_filter_slice_f64(actual_f64.as_mut_slice(), 44100.0, 120.0);
+            let mut actual_f64 = samples_f64;
+            let mut filter = LowpassFilter::new(44100.0, 120.0);
+            for sample in &mut expected_f64 {
+                *sample = filter.run(*sample);
+            }
+            LowpassFilter::new(44100.0, 120.0).run_slice(&mut actual_f64);
             for (i, (e, a)) in expected_f64.iter().zip(&actual_f64).enumerate() {
                 assert!((e - a).abs() < 1e-12, "f64, n={n}, i={i}: {e} vs {a}");
             }
@@ -609,6 +591,26 @@ mod tests {
         }
     }
 
+    /// Tests that a reset filter behaves like a new one, so it can be reused
+    /// for an unrelated signal.
+    #[test]
+    fn test_reset_equals_new_filter() {
+        let samples = (0..100)
+            .map(|i| (i as f32 * 0.37).sin() * 0.9)
+            .collect::<Vec<_>>();
+
+        let mut expected = samples.clone();
+        LowpassFilter::<f32>::new(44100.0, 120.0).run_slice(&mut expected);
+
+        let mut filter = LowpassFilter::<f32>::new(44100.0, 120.0);
+        filter.run_slice(&mut [0.9; 50]);
+        filter.reset();
+        let mut actual = samples;
+        filter.run_slice(&mut actual);
+
+        assert_eq!(expected, actual);
+    }
+
     /// Tests if the functions with f32 and f64 behave similar.
     #[test]
     fn test_lpf_f32_f64() {
@@ -618,8 +620,8 @@ mod tests {
         let mut lowpassed_f32 = samples_h_orig.clone();
         let mut lowpassed_f64 = samples_h_orig.iter().map(|x| *x as f64).collect::<Vec<_>>();
 
-        lowpass_filter(&mut lowpassed_f32, sampling_rate, 90.0);
-        lowpass_filter_f64(&mut lowpassed_f64, sampling_rate as f64, 90.0);
+        LowpassFilter::new(sampling_rate, 90.0).run_slice(&mut lowpassed_f32);
+        LowpassFilter::new(sampling_rate as f64, 90.0).run_slice(&mut lowpassed_f64);
 
         let power_f32 = calculate_power(&lowpassed_f32);
         let power_f64 =
