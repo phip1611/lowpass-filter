@@ -107,11 +107,27 @@ mod sealed {
     impl Sealed for f64 {}
 }
 
+mod util {
+    /// Hook to call the type-specific SIMD implementation in `crate::simd`
+    /// from generic code.
+    pub trait RunSliceSimd: Sized {
+        #[cfg(feature = "simd")]
+        fn run_slice_simd(filter: &mut super::LowpassFilter<Self>, samples: &mut [Self]);
+    }
+
+    // With the `simd` feature, the implementations live in `crate::simd`.
+    #[cfg(not(feature = "simd"))]
+    impl RunSliceSimd for f32 {}
+    #[cfg(not(feature = "simd"))]
+    impl RunSliceSimd for f64 {}
+}
+
 /// A sample type [`LowpassFilter`] can operate on: [`f32`] or [`f64`].
 ///
 /// This trait is sealed and cannot be implemented outside of this crate.
 pub trait Sample:
     sealed::Sealed
+    + util::RunSliceSimd
     + Copy
     + PartialOrd
     + Debug
@@ -348,6 +364,17 @@ impl<T: Sample> LowpassFilter<T> {
     ///   `-1.0..=1.0`.
     #[inline]
     pub fn run_slice(&mut self, samples: &mut [T]) {
+        #[cfg(feature = "simd")]
+        simd::run_slice_simd(self, samples);
+        #[cfg(not(feature = "simd"))]
+        self.run_slice_autovectorized(samples);
+    }
+
+    /// Implementation of [`Self::run_slice`] that relies on compiler
+    /// auto-vectorization.
+    #[cfg(not(feature = "simd"))]
+    #[inline]
+    fn run_slice_autovectorized(&mut self, samples: &mut [T]) {
         if samples.is_empty() {
             return;
         }
@@ -388,6 +415,9 @@ impl<T: Sample> LowpassFilter<T> {
         self.prev = T::ZERO;
     }
 }
+
+#[cfg(feature = "simd")]
+mod simd;
 
 #[cfg(test)]
 mod test_util;
