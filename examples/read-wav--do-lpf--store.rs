@@ -3,7 +3,7 @@ use crate::test_util::{
     write_wav_file,
 };
 use audio_visualizer::WaveformVisualizer;
-use lowpass_filter::lowpass_filter;
+use lowpass_filter::LowpassFilter;
 use spectrum_analyzer::scaling::scale_to_zero_to_one;
 use spectrum_analyzer::windows::hann_window;
 use spectrum_analyzer::{FrequencyLimit, samples_fft_to_spectrum};
@@ -58,11 +58,7 @@ fn main() {
     // Apply LPF n times
     let mut samples_processed_f32 = samples_unprocessed_f32.clone();
     for _ in 0..times {
-        lowpass_filter(
-            &mut samples_processed_f32,
-            wavspec.sample_rate as f32,
-            100.0,
-        );
+        LowpassFilter::new(wavspec.sample_rate as f32, 100.0).run_slice(&mut samples_processed_f32);
     }
     let samples_processed_i16 = samples_processed_f32
         .iter()

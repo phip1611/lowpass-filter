@@ -1,5 +1,5 @@
 use audio_visualizer::live::{AudioInput, LiveVisualizer, Transform};
-use lowpass_filter::lowpass_filter_slice;
+use lowpass_filter::LowpassFilter;
 use std::io::{BufRead, stdin};
 
 /// Example that creates a live visualization of realtime audio data
@@ -7,8 +7,11 @@ use std::io::{BufRead, stdin};
 fn main() {
     let input = select_input();
     LiveVisualizer::new(Transform::waveform(|samples, sample_rate| {
+        // `samples` is an overlapping history window, not a stream of new
+        // samples, so filter it as a whole instead of keeping a filter
+        // across calls.
         let mut samples = samples.to_vec();
-        lowpass_filter_slice(&mut samples, sample_rate, 80.0);
+        LowpassFilter::new(sample_rate, 80.0).run_slice(&mut samples);
         samples
     }))
     .title("Live Audio Lowpass Filter View")

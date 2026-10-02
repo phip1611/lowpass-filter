@@ -22,12 +22,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 //! Minimal example how to use this crate/how to apply low pass filter.
-use lowpass_filter::lowpass_filter;
+use lowpass_filter::LowpassFilter;
 
 /// Minimal example how to use this crate/how to apply low pass filter.
 fn main() {
     // read this from MP3 for example
-    let mut mono_audio_data = [0.0, 1.0, -5.0, 1551.0, 141.0, 24.0];
+    let mut mono_audio_data = [0.0_f32, 0.3, -0.6, 0.8, 0.5, -0.2];
     // mutates the input buffer
-    lowpass_filter(&mut mono_audio_data, 44100.0, 120.0);
+    LowpassFilter::new(44100.0, 120.0).run_slice(&mut mono_audio_data);
 }
