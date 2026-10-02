@@ -145,16 +145,83 @@ impl Sample for f64 {
 /// and f64.
 const LANES: usize = 8;
 
-/// A first-order lowpass filter compatible with `f32` and `f64`.
+/// A first-order lowpass filter for `f32` and `f64` samples.
 ///
-/// It can consume and filter items one-by-one (iterator-style API) or operate
-/// on slices ([`LowpassFilter::run_slice`]).
+/// The filter is stateful: each output depends on the previous one. Filter
+/// samples in-place with [`Self::run_slice`] (preferred, significantly
+/// faster) or one at a time with [`Self::run`]. Both continue from the same
+/// state and can be mixed freely. Use [`Self::reset`] before filtering an
+/// unrelated signal.
 ///
 /// It is recommended to operate on values in range `-1.0..=1.0`, which is also
-/// the default in DSP.
+/// the default in DSP. All values must be finite, i.e., not NaN or infinite.
 ///
 /// Using `f32` (the default) is recommended: for audio processing, it is
 /// accurate enough and significantly faster than `f64`.
+///
+/// # Examples
+///
+/// Filter a whole buffer in one go:
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// let mut samples = [0.0_f32, 0.3, -0.6, 0.8, 0.5, -0.2];
+/// LowpassFilter::new(44100.0, 120.0).run_slice(&mut samples);
+/// ```
+///
+/// Streaming: keep one filter per signal for its whole lifetime, e.g. in
+/// your audio processor. Its state carries over between calls, so filtering
+/// buffer by buffer equals filtering everything at once:
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// struct BassExtractor {
+///     filter: LowpassFilter,
+/// }
+///
+/// impl BassExtractor {
+///     /// Called by the audio backend for each new buffer.
+///     fn process(&mut self, buffer: &mut [f32]) {
+///         self.filter.run_slice(buffer);
+///     }
+/// }
+///
+/// let mut bass = BassExtractor {
+///     filter: LowpassFilter::new(44100.0, 120.0),
+/// };
+/// bass.process(&mut [0.0, 0.3, -0.6, 0.8]);
+/// bass.process(&mut [0.5, -0.2, 0.1, 0.4]);
+/// ```
+///
+/// Interleaved stereo: every channel is a separate signal and needs its own
+/// filter state. For large buffers, deinterleaving into one buffer per
+/// channel and using [`Self::run_slice`] might be faster.
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// // [l, r, l, r, ...]
+/// let mut stereo = [0.1_f32, -0.1, 0.4, -0.4, 0.2, -0.2];
+/// let mut left = LowpassFilter::new(44100.0, 120.0);
+/// let mut right = left.clone();
+/// for frame in stereo.chunks_exact_mut(2) {
+///     frame[0] = left.run(frame[0]);
+///     frame[1] = right.run(frame[1]);
+/// }
+/// ```
+///
+/// Smoothing values as they arrive, e.g. sensor readings:
+///
+/// ```rust
+/// use lowpass_filter::LowpassFilter;
+///
+/// // 100 Hz sensor, suppress jitter above 5 Hz
+/// let mut filter = LowpassFilter::<f64>::new(100.0, 5.0);
+/// let readings = [0.50, 0.52, 0.91, 0.49, 0.51];
+/// let smoothed = readings.map(|reading| filter.run(reading));
+/// ```
 ///
 /// # More Info
 /// - <https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter>
@@ -174,6 +241,10 @@ impl<T: Sample> LowpassFilter<T> {
     /// # Arguments
     /// - `sample_rate_hz`: Sample rate in Hz (e.g., 48000.0).
     /// - `cutoff_frequency_hz`: Cutoff frequency in Hz (e.g., 1000.0).
+    ///
+    /// # Panics
+    /// Panics if `cutoff_frequency_hz` is above the Nyquist frequency, i.e.,
+    /// half of `sample_rate_hz`.
     #[must_use]
     pub fn new(sample_rate_hz: T, cutoff_frequency_hz: T) -> Self {
         // Nyquist rule
@@ -237,6 +308,9 @@ impl<T: Sample> LowpassFilter<T> {
     }
 
     /// Filter a single sample and return the filtered result.
+    ///
+    /// For samples in a slice, prefer [`Self::run_slice`], which is
+    /// significantly faster.
     ///
     /// It is recommended to operate on values in range `-1.0..=1.0`, which is
     /// also the default in DSP. All values must be finite, i.e., not NaN or
