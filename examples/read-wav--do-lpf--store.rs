@@ -115,7 +115,7 @@ fn samples_to_spectrum_and_plot(audio_data: &[f32], sampling_rate: f32, filename
         .map(|(a, b)| (a.val(), b.val()))
         .collect::<Vec<_>>();
 
-    audio_visualizer::SpectrumVisualizer::new(&spectrum_raw[0..16384])
+    audio_visualizer::SpectrumVisualizer::new(&spectrum_raw)
         .write_png(format!(
             "{}/{filename}",
             target_dir_test_artifacts().display()
