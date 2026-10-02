@@ -6,6 +6,8 @@
   functions up to 50%.
 - Optimize `.run_slice()` in streaming setups (called frequently) on only a few
   samples (less than 512) by 5%
+- `LowpassFilter` now defaults to `f32` samples, e.g.,
+  `struct S { filter: LowpassFilter }`
 
 ## v0.5.0 (2026-09-05)
 - Significantly improved performance. Compared to the previous release,

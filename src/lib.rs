@@ -153,10 +153,13 @@ const LANES: usize = 8;
 /// It is recommended to operate on values in range `-1.0..=1.0`, which is also
 /// the default in DSP.
 ///
+/// Using `f32` (the default) is recommended: for audio processing, it is
+/// accurate enough and significantly faster than `f64`.
+///
 /// # More Info
 /// - <https://en.wikipedia.org/wiki/Low-pass_filter#Simple_infinite_impulse_response_filter>
 #[derive(Debug, Clone)]
-pub struct LowpassFilter<T> {
+pub struct LowpassFilter<T = f32> {
     alpha: T,
     /// Precomputed `1 - alpha`.
     beta: T,
