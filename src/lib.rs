@@ -453,8 +453,10 @@ mod tests {
         let power_l_orig = calculate_power(&samples_l_orig);
         let power_h_orig = calculate_power(&samples_h_orig);
 
-        lowpass_filter_slice(&mut samples_l_lowpassed, sampling_rate, cutoff_fr);
-        lowpass_filter_slice(&mut samples_h_lowpassed, sampling_rate, cutoff_fr);
+        let mut filter = LowpassFilter::new(sampling_rate, cutoff_fr);
+        filter.run_slice(&mut samples_l_lowpassed);
+        filter.reset();
+        filter.run_slice(&mut samples_h_lowpassed);
 
         let power_l_lowpassed = calculate_power(&samples_l_lowpassed);
         let power_h_lowpassed = calculate_power(&samples_h_lowpassed);
@@ -508,8 +510,10 @@ mod tests {
         assert!(loudness(&low_tone) > 0.99);
         assert!(loudness(&high_tone) > 0.99);
 
-        lowpass_filter_slice(&mut low_tone, sample_rate, cutoff);
-        lowpass_filter_slice(&mut high_tone, sample_rate, cutoff);
+        let mut filter = LowpassFilter::new(sample_rate, cutoff);
+        filter.run_slice(&mut low_tone);
+        filter.reset();
+        filter.run_slice(&mut high_tone);
 
         assert!(
             loudness(&low_tone) > 0.9,
@@ -533,7 +537,7 @@ mod tests {
     #[test]
     fn test_abrupt_start_fades_in_without_click() {
         let mut samples = [1.0_f32; 20];
-        lowpass_filter_slice(&mut samples, 44100.0, 1000.0);
+        LowpassFilter::new(44100.0, 1000.0).run_slice(&mut samples);
 
         // The filter starts from silence (0.0), so include it in the output.
         let output = iter::once(0.0).chain(samples).collect::<Vec<_>>();
@@ -571,17 +575,23 @@ mod tests {
             let samples_f32 = samples_f64.iter().map(|&x| x as f32).collect::<Vec<_>>();
 
             let mut expected_f32 = samples_f32.clone();
-            let mut actual_f32 = samples_f32.clone();
-            lowpass_filter(expected_f32.as_mut_slice(), 44100.0, 120.0);
-            lowpass_filter_slice(actual_f32.as_mut_slice(), 44100.0, 120.0);
+            let mut actual_f32 = samples_f32;
+            let mut filter = LowpassFilter::new(44100.0, 120.0);
+            for sample in &mut expected_f32 {
+                *sample = filter.run(*sample);
+            }
+            LowpassFilter::new(44100.0, 120.0).run_slice(&mut actual_f32);
             for (i, (e, a)) in expected_f32.iter().zip(&actual_f32).enumerate() {
                 assert!((e - a).abs() < 1e-5, "f32, n={n}, i={i}: {e} vs {a}");
             }
 
             let mut expected_f64 = samples_f64.clone();
-            let mut actual_f64 = samples_f64.clone();
-            lowpass_filter_f64(expected_f64.as_mut_slice(), 44100.0, 120.0);
-            lowpass_filter_slice_f64(actual_f64.as_mut_slice(), 44100.0, 120.0);
+            let mut actual_f64 = samples_f64;
+            let mut filter = LowpassFilter::new(44100.0, 120.0);
+            for sample in &mut expected_f64 {
+                *sample = filter.run(*sample);
+            }
+            LowpassFilter::new(44100.0, 120.0).run_slice(&mut actual_f64);
             for (i, (e, a)) in expected_f64.iter().zip(&actual_f64).enumerate() {
                 assert!((e - a).abs() < 1e-12, "f64, n={n}, i={i}: {e} vs {a}");
             }
@@ -621,8 +631,8 @@ mod tests {
         let mut lowpassed_f32 = samples_h_orig.clone();
         let mut lowpassed_f64 = samples_h_orig.iter().map(|x| *x as f64).collect::<Vec<_>>();
 
-        lowpass_filter(&mut lowpassed_f32, sampling_rate, 90.0);
-        lowpass_filter_f64(&mut lowpassed_f64, sampling_rate as f64, 90.0);
+        LowpassFilter::new(sampling_rate, 90.0).run_slice(&mut lowpassed_f32);
+        LowpassFilter::new(sampling_rate as f64, 90.0).run_slice(&mut lowpassed_f64);
 
         let power_f32 = calculate_power(&lowpassed_f32);
         let power_f64 =
