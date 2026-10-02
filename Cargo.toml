@@ -30,7 +30,12 @@ exclude = [
 # Lets `cargo bench -- <criterion args>` work, libtest would reject them.
 bench = false
 
+[features]
+# Explicit SIMD implementation of `run_slice()`; requires Rust 1.89.
+simd = ["dep:wide"]
+
 [dependencies]
+wide = { version = "1.7", default-features = false, optional = true }
 
 [dev-dependencies]
 audio-visualizer = "0.7" # to visualize the output

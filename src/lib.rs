@@ -66,12 +66,21 @@ SOFTWARE.
 //!
 //! ## Performance
 //!
-//! [`LowpassFilter::run_slice`] is 1.8-4.1x faster than
+//! On x86, [`LowpassFilter::run_slice`] is 2-4x faster than
 //! [`LowpassFilter::run`], depending on the sample type and the enabled CPU
 //! features: newer ones allow wider SIMD instructions, e.g., with
-//! `-C target-cpu=native`. See the
-//! [README](https://github.com/phip1611/lowpass-filter#performance) for
-//! measurements, including a comparison with the `biquad` crate.
+//! `-C target-cpu=native`.
+//!
+//! The optional `simd` cargo feature makes `run_slice` use explicit SIMD via
+//! the [wide] crate instead of relying on compiler auto-vectorization. It is
+//! faster on all measured CPUs, for `f32` up to 1.5x on x86 and 2.3x on ARM.
+//! The trade-off is a dependency and an MSRV of Rust 1.89. Without the
+//! feature, this crate has no dependencies.
+//!
+//! See the [README](https://github.com/phip1611/lowpass-filter#performance)
+//! for measurements, including a comparison with the `biquad` crate.
+//!
+//! [wide]: https://crates.io/crates/wide
 
 #![deny(
     clippy::all,
@@ -107,11 +116,27 @@ mod sealed {
     impl Sealed for f64 {}
 }
 
+mod util {
+    /// Hook to call the type-specific SIMD implementation in `crate::simd`
+    /// from generic code.
+    pub trait RunSliceSimd: Sized {
+        #[cfg(feature = "simd")]
+        fn run_slice_simd(filter: &mut super::LowpassFilter<Self>, samples: &mut [Self]);
+    }
+
+    // With the `simd` feature, the implementations live in `crate::simd`.
+    #[cfg(not(feature = "simd"))]
+    impl RunSliceSimd for f32 {}
+    #[cfg(not(feature = "simd"))]
+    impl RunSliceSimd for f64 {}
+}
+
 /// A sample type [`LowpassFilter`] can operate on: [`f32`] or [`f64`].
 ///
 /// This trait is sealed and cannot be implemented outside of this crate.
 pub trait Sample:
     sealed::Sealed
+    + util::RunSliceSimd
     + Copy
     + PartialOrd
     + Debug
@@ -147,9 +172,53 @@ impl Sample for f64 {
     const PI: Self = core::f64::consts::PI;
 }
 
-/// Block size for slice processing. 8 measured fastest on x86-64 for f32
-/// and f64.
-const LANES: usize = 8;
+/// Block size for slice processing, chosen at compile time to fit the SIMD
+/// registers of the target.
+///
+/// The work per sample grows with the block size, so wider blocks only pay
+/// off if wider SIMD registers are available. 16 and 32 were slower than 8
+/// on all measured targets.
+const LANES: usize = {
+    // x86 with AVX2 or AVX-512, e.g., `-C target-cpu=native`: wider
+    // registers make 8 up to 1.6x faster than 4 for long inputs and
+    // streaming (measured with AVX-512).
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    let lanes = 8;
+    // x86 baseline, as most crates are built: SSE2 only has 128-bit
+    // registers. 4 is up to 2x faster than 8, except for f32 inputs of 1024
+    // or more samples per call without the `simd` feature (up to -15%).
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        not(target_feature = "avx2")
+    ))]
+    let lanes = 4;
+    // aarch64: NEON has 128-bit registers. 4 is up to 2x faster than 8,
+    // except for f32 calls with 44100 samples without the `simd` feature
+    // (-18%).
+    #[cfg(target_arch = "aarch64")]
+    let lanes = 4;
+    // RISC-V: Microcontrollers mostly have no SIMD, so a small block keeps
+    // the work per sample and the size of the filter low. The vector
+    // extension guarantees at least 128-bit registers, so like with NEON, 4
+    // fit. Wider registers (`zvl256b`) would fit 8, but stable Rust does not
+    // expose RISC-V vector features to `cfg` yet. Not measured.
+    #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+    let lanes = 4;
+    // Other targets, often without SIMD: a small block keeps the work per
+    // sample and the size of the filter low.
+    #[cfg(not(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv32",
+        target_arch = "riscv64"
+    )))]
+    let lanes = 4;
+    lanes
+};
 
 /// A first-order lowpass filter for `f32` and `f64` samples.
 ///
@@ -348,6 +417,17 @@ impl<T: Sample> LowpassFilter<T> {
     ///   `-1.0..=1.0`.
     #[inline]
     pub fn run_slice(&mut self, samples: &mut [T]) {
+        #[cfg(feature = "simd")]
+        simd::run_slice_simd(self, samples);
+        #[cfg(not(feature = "simd"))]
+        self.run_slice_autovectorized(samples);
+    }
+
+    /// Implementation of [`Self::run_slice`] that relies on compiler
+    /// auto-vectorization.
+    #[cfg(not(feature = "simd"))]
+    #[inline]
+    fn run_slice_autovectorized(&mut self, samples: &mut [T]) {
         if samples.is_empty() {
             return;
         }
@@ -388,6 +468,9 @@ impl<T: Sample> LowpassFilter<T> {
         self.prev = T::ZERO;
     }
 }
+
+#[cfg(feature = "simd")]
+mod simd;
 
 #[cfg(test)]
 mod test_util;
@@ -546,7 +629,7 @@ mod tests {
     /// per-sample path, including all tail lengths around the block size.
     #[test]
     fn test_run_slice_matches_run() {
-        for n in [0_usize, 1, 3, 7, 8, 9, 16, 17, 41, 1003] {
+        for n in [0_usize, 1, 2, 3, 4, 5, 7, 8, 9, 16, 17, 41, 1003] {
             let samples_f64 = (0..n)
                 .map(|i| (i as f64 * 0.37).sin() * 0.9)
                 .collect::<Vec<_>>();

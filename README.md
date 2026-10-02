@@ -26,39 +26,59 @@ For streaming, per-sample processing, and more examples, see the
 
 ## Performance
 
-**TL;DR:** Prefer `run_slice`: it is 1.8-4.1x faster than per-sample
-processing and 2.7-6.2x faster than `biquad`. For streaming, create the
-filter once and reuse it.
+**TL;DR:** Prefer `run_slice`: on x86, it is 2-4x faster than per-sample
+processing. The optional `simd` feature makes `run_slice()` even faster: up to
+1.5x on x86 and 2.3x on ARM. For streaming, create the filter once and reuse
+it.
 
-Measured on an AMD EPYC 9634 (Zen 4) with Rust 1.99, filtering one second of
-audio (44100 samples) with a fresh filter.
+Measured with Rust 1.99, filtering one second of audio (44100 samples) with a
+fresh filter.
 
-- _Default_: compiled for the baseline `x86_64` CPU, which only guarantees
-  SSE2 with 128-bit SIMD registers. This is how most crates and binaries are
-  built.
+- _Default_: compiled for the baseline CPU of the target. On `x86_64`, this
+  only guarantees SSE2 with 128-bit SIMD registers. This is how most crates
+  and binaries are built.
 - _Native_: compiled with `-C target-cpu=native`, which enables all CPU
   features of the test machine, including AVX-512 with 512-bit SIMD
-  registers. Such binaries do not run on CPUs without these features.
+  registers on both x86 CPUs. Such binaries do not run on CPUs without these
+  features. On the Raspberry Pi, it makes no difference.
 
-Throughput in million samples per second, higher is better:
+Throughput of `f32` samples in million samples per second, higher is better:
 
-| API                                      | f32 default | f32 native | f64 default | f64 native |
-|------------------------------------------|------------:|-----------:|------------:|-----------:|
-| `LowpassFilter::run`                     |         599 |        599 |         597 |        600 |
-| `LowpassFilter::run_slice`               |        1719 |       2474 |        1090 |       2008 |
-| `biquad` (`DirectForm2Transposed`)       |         396 |        400 |         398 |        398 |
+| CPU                               | `run` | `run_slice` | `run_slice` (`simd`) | `biquad` |
+|-----------------------------------|------:|------------:|---------------------:|---------:|
+| AMD EPYC 9634, default            |   603 |        1503 |                 2192 |      394 |
+| AMD EPYC 9634, native             |   596 |        2478 |                 3637 |      401 |
+| AMD Ryzen 7 7840U, default        |   828 |        2052 |                 3051 |      546 |
+| AMD Ryzen 7 7840U, native         |   823 |        3160 |                 4893 |      548 |
+| Raspberry Pi 4 (Cortex-A72)       |   187 |         215 |                  492 |      143 |
+
+With `f64` samples, `run` and `biquad` perform the same, while `run_slice`
+reaches 55-90% of the `f32` throughput.
 
 When processing audio in buffers of 64 samples, reusing one filter is
-1.2-1.5x faster than creating a new one per buffer, and reaches 80-90% of the
-throughput of filtering one long slice.
+1.1-2.2x faster than creating a new one per buffer, and reaches at least 90%
+of the throughput of filtering one long slice.
+
+### Explicit SIMD
+
+The optional `simd` cargo feature makes `run_slice` use explicit SIMD via the
+[wide](https://crates.io/crates/wide) crate instead of relying on compiler
+auto-vectorization. It is faster on all measured CPUs, most for `f32`. The
+trade-off is a dependency and an MSRV of Rust 1.89. Without the feature, this
+crate has no dependencies.
+
+```toml
+lowpass-filter = { version = "0.6", features = ["simd"] }
+```
 
 ### Comparison with `biquad`
 
 For the equivalent first-order lowpass (`Type::SinglePoleLowPass`), this
 crate outperforms the [biquad](https://crates.io/crates/biquad) crate:
-1.5x throughput with per-sample processing (`run`) and 2.7-6.2x with slice
-processing (`run_slice`), depending on the sample type and enabled CPU
-features, as `biquad` processes samples strictly one at a time.
+1.3-1.5x throughput with per-sample processing (`run`) and 1.4-6.2x with
+slice processing (`run_slice`), depending on the CPU, the sample type, and
+the enabled CPU features, as `biquad` processes samples strictly one at a
+time. With the `simd` feature, it is up to 9x.
 
 `biquad` is the better choice for sharp frequency separation or other
 filter types (highpass, bandpass, notch, EQ): its second-order filters
@@ -71,6 +91,8 @@ roll off at 12 dB/octave instead of 6, with a configurable Q factor.
 cargo bench -- --save-baseline generic
 # All CPU features of this machine, compared against the run above
 RUSTFLAGS="-C target-cpu=native" cargo bench -- --baseline generic
+# With the simd feature, compared against the run above
+cargo bench --features simd -- --baseline generic
 # Quick and rough, without touching saved results
 cargo bench -- --quick --noplot --discard-baseline
 ```
