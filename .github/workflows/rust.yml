@@ -38,7 +38,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
       - uses: Swatinem/rust-cache@v2
       # required because of "audio-visualizer"
-      - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev libfontconfig-dev -y
+      - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev
       - run: cargo build --all-targets
       - run: cargo test
       - name: benchmark quick run
@@ -59,7 +59,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       # required because of "audio-visualizer"
-      - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev libfontconfig-dev -y
+      - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev -y
       - name: Rustfmt (checks all source code/all features)
         run: cargo fmt -- --check
       - name: Clippy
