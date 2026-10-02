@@ -19,6 +19,7 @@ pkgs.mkShell rec {
     with pkgs;
     [
       pkg-config
+      gnuplot
       rustup
     ]
     ++ libs;
