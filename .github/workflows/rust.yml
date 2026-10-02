@@ -41,8 +41,8 @@ jobs:
       - run: sudo apt update && sudo apt install libasound2-dev libxkbcommon-dev libfontconfig-dev -y
       - run: cargo build --all-targets
       - run: cargo test
-      - name: benchmark smoke test (runs each bench once, no measurement)
-        run: cargo bench -- --test
+      - name: benchmark quick run
+        run: cargo bench -- --quick
 
   style_checks:
     runs-on: ubuntu-latest
