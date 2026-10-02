@@ -63,6 +63,15 @@ SOFTWARE.
 //!
 //! For samples that do not live in a slice, filter them one at a time with
 //! [`LowpassFilter::run`]. See [`LowpassFilter`] for more examples.
+//!
+//! ## Performance
+//!
+//! [`LowpassFilter::run_slice`] is 1.8-4.1x faster than
+//! [`LowpassFilter::run`], depending on the sample type and the enabled CPU
+//! features: newer ones allow wider SIMD instructions, e.g., with
+//! `-C target-cpu=native`. See the
+//! [README](https://github.com/phip1611/lowpass-filter#performance) for
+//! measurements, including a comparison with the `biquad` crate.
 
 #![deny(
     clippy::all,
