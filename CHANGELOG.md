@@ -1,6 +1,8 @@
 # Changelog for `lowpass-filter`
 
 ## Unreleased
+
+## v0.6.0 (2026-10-02)
 - Breaking: Removed `lowpass_filter`, `lowpass_filter_f64`,
   `lowpass_filter_slice`, and `lowpass_filter_slice_f64`. `LowpassFilter` is
   now the only entry point:

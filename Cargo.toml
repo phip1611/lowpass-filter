@@ -5,7 +5,7 @@ High performance no_std lowpass filter for digital signal processing. A
 simple first-order digital filter with a SIMD-accelerated slice API, no
 dependencies, no unsafe code, and no allocations.
 """
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Philipp Schuster <phip1611@gmail.com>"]
 edition = "2024"
 keywords = ["audio", "filter", "digital", "lowpass", "dsp"]
