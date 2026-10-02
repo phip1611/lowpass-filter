@@ -26,7 +26,30 @@ SOFTWARE.
 
 use crate::util::RunSliceSimd;
 use crate::{LANES, LowpassFilter, Sample};
-use wide::{f32x8, f64x8};
+use wide::{f32x4, f32x8, f64x4, f64x8};
+
+/// Maps a [`LANES`] value to the matching `wide` vector types.
+trait Vectors {
+    type F32;
+    type F64;
+}
+
+/// Selects the [`Vectors`] for `N` lanes.
+struct Lanes<const N: usize>;
+
+impl Vectors for Lanes<4> {
+    type F32 = f32x4;
+    type F64 = f64x4;
+}
+
+impl Vectors for Lanes<8> {
+    type F32 = f32x8;
+    type F64 = f64x8;
+}
+
+// Fails to compile if there is no `Vectors` implementation for `LANES`.
+type F32s = <Lanes<LANES> as Vectors>::F32;
+type F64s = <Lanes<LANES> as Vectors>::F64;
 
 /// Explicit SIMD implementation of [`LowpassFilter::run_slice`].
 #[inline]
@@ -83,5 +106,5 @@ macro_rules! impl_run_slice_simd {
     };
 }
 
-impl_run_slice_simd!(f32, f32x8);
-impl_run_slice_simd!(f64, f64x8);
+impl_run_slice_simd!(f32, F32s);
+impl_run_slice_simd!(f64, F64s);

@@ -163,9 +163,40 @@ impl Sample for f64 {
     const PI: Self = core::f64::consts::PI;
 }
 
-/// Block size for slice processing. 8 measured fastest on x86-64 for f32
-/// and f64.
-const LANES: usize = 8;
+/// Block size for slice processing, chosen at compile time to fit the SIMD
+/// registers of the target.
+///
+/// The work per sample grows with the block size, so wider blocks only pay
+/// off if wider SIMD registers are available. 16 and 32 were slower than 8
+/// on all measured targets.
+const LANES: usize = {
+    // x86 with AVX2 or AVX-512, e.g., `-C target-cpu=native`: wider
+    // registers make 8 up to 1.6x faster than 4 for long inputs and
+    // streaming (measured with AVX-512).
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    let lanes = 8;
+    // x86 baseline, as most crates are built: SSE2 only has 128-bit
+    // registers. 4 is up to 2x faster than 8, except for f32 inputs of 1024
+    // or more samples per call without the `simd` feature (up to -15%).
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        not(target_feature = "avx2")
+    ))]
+    let lanes = 4;
+    // aarch64: NEON has 128-bit registers. 4 is up to 2x faster than 8,
+    // except for f32 calls with 44100 samples without the `simd` feature
+    // (-18%).
+    #[cfg(target_arch = "aarch64")]
+    let lanes = 4;
+    // Other targets, often without SIMD: a small block keeps the work per
+    // sample and the size of the filter low.
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    let lanes = 4;
+    lanes
+};
 
 /// A first-order lowpass filter for `f32` and `f64` samples.
 ///
@@ -576,7 +607,7 @@ mod tests {
     /// per-sample path, including all tail lengths around the block size.
     #[test]
     fn test_run_slice_matches_run() {
-        for n in [0_usize, 1, 3, 7, 8, 9, 16, 17, 41, 1003] {
+        for n in [0_usize, 1, 2, 3, 4, 5, 7, 8, 9, 16, 17, 41, 1003] {
             let samples_f64 = (0..n)
                 .map(|i| (i as f64 * 0.37).sin() * 0.9)
                 .collect::<Vec<_>>();
