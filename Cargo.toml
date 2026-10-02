@@ -38,7 +38,7 @@ simd = ["dep:wide"]
 wide = { version = "1.7", default-features = false, optional = true }
 
 [dev-dependencies]
-audio-visualizer = "0.7" # to visualize the output
+audio-visualizer = "0.8" # to visualize the output
 biquad = "0.6"
 criterion = { version = "0.8", features = ["html_reports"] }
 hound = "3.5"
