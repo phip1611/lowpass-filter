@@ -29,7 +29,7 @@ SOFTWARE.
 //! code, and performs no allocations, making it suitable for any target from
 //! desktop to embedded.
 //!
-//! Samples must be in range `-1.0..=1.0`, which is the default in DSP.
+//! Samples should be in range `-1.0..=1.0`, which is the default in DSP.
 //!
 //! ## Usage
 //!
@@ -150,7 +150,7 @@ const LANES: usize = 8;
 /// It can consume and filter items one-by-one (iterator-style API) or operate
 /// on slices ([`LowpassFilter::run_slice`]).
 ///
-/// It is mandatory to operate on values in range `-1.0..=1.0`, which is also
+/// It is recommended to operate on values in range `-1.0..=1.0`, which is also
 /// the default in DSP.
 ///
 /// # More Info
@@ -244,7 +244,7 @@ impl<T: Sample> LowpassFilter<T> {
         // Re-associated form of `prev + alpha * (input - prev)`:
         //
         // On the very first iteration, the second part is zero and `input`
-        // is only influences by `alpha`.
+        // is only influenced by `alpha`.
         self.prev = self.alpha * input + self.beta * self.prev;
         self.prev
     }

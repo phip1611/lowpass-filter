@@ -8,7 +8,7 @@ smooth noisy sensor data. It has no dependencies, no `unsafe` code, and
 performs no allocations, making it suitable for any target from desktop to
 embedded.
 
-Samples must be in range `-1.0..=1.0`, which is the default in DSP.
+Samples should be in range `-1.0..=1.0`, which is the default in DSP.
 
 ## Usage
 
