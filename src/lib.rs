@@ -622,6 +622,26 @@ mod tests {
         }
     }
 
+    /// Tests that a reset filter behaves like a new one, so it can be reused
+    /// for an unrelated signal.
+    #[test]
+    fn test_reset_equals_new_filter() {
+        let samples = (0..100)
+            .map(|i| (i as f32 * 0.37).sin() * 0.9)
+            .collect::<Vec<_>>();
+
+        let mut expected = samples.clone();
+        LowpassFilter::<f32>::new(44100.0, 120.0).run_slice(&mut expected);
+
+        let mut filter = LowpassFilter::<f32>::new(44100.0, 120.0);
+        filter.run_slice(&mut [0.9; 50]);
+        filter.reset();
+        let mut actual = samples;
+        filter.run_slice(&mut actual);
+
+        assert_eq!(expected, actual);
+    }
+
     /// Tests if the functions with f32 and f64 behave similar.
     #[test]
     fn test_lpf_f32_f64() {
