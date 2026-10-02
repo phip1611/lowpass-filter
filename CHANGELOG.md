@@ -8,6 +8,13 @@
   samples (less than 512) by 5%
 - `LowpassFilter` now defaults to `f32` samples, e.g.,
   `struct S { filter: LowpassFilter }`
+- Breaking: Removed `lowpass_filter`, `lowpass_filter_f64`,
+  `lowpass_filter_slice`, and `lowpass_filter_slice_f64`. `LowpassFilter` is
+  now the only entry point:
+  - `lowpass_filter_slice(&mut s, sr, fc)` ->
+    `LowpassFilter::new(sr, fc).run_slice(&mut s)`
+  - `lowpass_filter(&mut s, sr, fc)` -> same as above; for samples not in a
+    slice, call `LowpassFilter::run` per sample.
 
 ## v0.5.0 (2026-09-05)
 - Significantly improved performance. Compared to the previous release,
