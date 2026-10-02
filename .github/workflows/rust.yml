@@ -43,6 +43,18 @@ jobs:
       - run: cargo test
       - name: benchmark quick run
         run: cargo bench -- --quick
+      - name: test with simd feature
+        run: cargo test --features simd
+      # the `simd` feature selects the instruction set at compile time; also
+      # cover the AVX2/FMA code path
+      - name: test with simd feature for x86-64-v3
+        run: cargo test --features simd
+        env:
+          RUSTFLAGS: -C target-cpu=x86-64-v3
+      - name: install some no_std target
+        run: rustup target add thumbv7em-none-eabihf
+      - name: test no_std build with simd feature
+        run: cargo build --target thumbv7em-none-eabihf --features simd
 
   style_checks:
     runs-on: ubuntu-latest
@@ -63,6 +75,8 @@ jobs:
       - name: Rustfmt (checks all source code/all features)
         run: cargo fmt -- --check
       - name: Clippy
-        run: cargo clippy --all-targets
+        run: |
+          cargo clippy --all-targets
+          cargo clippy --all-targets --features simd
       - name: Rustdoc
         run: cargo doc --no-deps --document-private-items
