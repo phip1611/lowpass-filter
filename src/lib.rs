@@ -191,9 +191,22 @@ const LANES: usize = {
     // (-18%).
     #[cfg(target_arch = "aarch64")]
     let lanes = 4;
+    // RISC-V: Microcontrollers mostly have no SIMD, so a small block keeps
+    // the work per sample and the size of the filter low. The vector
+    // extension guarantees at least 128-bit registers, so like with NEON, 4
+    // fit. Wider registers (`zvl256b`) would fit 8, but stable Rust does not
+    // expose RISC-V vector features to `cfg` yet. Not measured.
+    #[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+    let lanes = 4;
     // Other targets, often without SIMD: a small block keeps the work per
     // sample and the size of the filter low.
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(not(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        target_arch = "riscv32",
+        target_arch = "riscv64"
+    )))]
     let lanes = 4;
     lanes
 };
